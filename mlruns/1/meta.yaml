@@ -1,0 +1,4 @@
+artifact_location: file:///C:/Users/Bindas/OneDrive%20-%20Politechnika%20Warszawska/Documents/3.Inzynierka/ML/Pytorch%20tutorial/mlruns/1
+experiment_id: '1'
+lifecycle_stage: active
+name: cifar_mlflow_test
