@@ -5,7 +5,6 @@ import torchvision
 from torch.utils.tensorboard import SummaryWriter
 import dataset
 
-
 FONT = cv2.FONT_HERSHEY_PLAIN
 green = (0, 255, 0)
 red = (255, 0, 0)
@@ -14,8 +13,11 @@ font_size = 1.5
 
 
 def show_image_with_classes(image, labels):
-    npimg = image.numpy()
+    un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
+    # denormalize the image
+    npimg = un_norm(image.clone()).numpy()
     npimg = npimg.transpose((1, 2, 0)).copy()
+
     for object_dict in labels:
         x = int(object_dict["bndbox"]["xmin"])
         y = int(object_dict["bndbox"]["ymin"])
@@ -35,7 +37,7 @@ def show_images_batch(loader):
 
     # get one batch of training images
     data_iter = iter(loader)
-    images, labels = data_iter.next()
+    images, labels, _ = data_iter.next()
 
     # create grid of images
     img_grid = torchvision.utils.make_grid(images)
@@ -50,6 +52,7 @@ def show_images_batch(loader):
 def matplotlib_imshow(img, one_channel=False):
     if one_channel:
         img = img.mean(dim=0)
+    # class can be static prob???
     un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
     # denormalize the image
     img = un_norm(img)
@@ -59,3 +62,20 @@ def matplotlib_imshow(img, one_channel=False):
     else:
         plt.figure(figsize=(15, 15))
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
+
+
+def xyxy_to_xywh(x1, y1, x2, y2, size):
+    # divide by width / height to normalize to 0...1
+    x = (x1 + x2) / (2 * size[0])
+    y = (y1 + y2) / (2 * size[1])
+    w = (x2 - x1) / size[0]
+    h = (y2 - y1) / size[1]
+    return x, y, w, h
+
+
+def xywh_to_xyxy(x, y, w, h, size):
+    x1 = (x - w / 2) * size[0]
+    y1 = (y - h / 2) * size[1]
+    x2 = (x + w / 2) * size[0]
+    y2 = (y + h / 2) * size[1]
+    return x1, y1, x2, y2

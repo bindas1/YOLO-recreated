@@ -12,14 +12,19 @@ from torch.utils.data import DataLoader
 import albumentations
 import utils
 
-
 # CONSTANTS
 SIZE = 448, 448
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
-classes_dict = {'person':0, 'bird':1, 'cat':2, 'cow':3, 'dog':4, 'horse':5, 'sheep':6, 'aeroplane':7,
-                'bicycle':8, 'boat':9, 'bus':10, 'car':11, 'motorbike':12, 'train':13, 'bottle':14,
-                'chair':15, 'dining table':16, 'potted plant':17, 'sofa':18, 'tvmonitor':19}
+classes_dict = {'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5, 'sheep': 6, 'aeroplane': 7,
+                'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
+                'chair': 15, 'dining table': 16, 'potted plant': 17, 'sofa': 18, 'tvmonitor': 19}
+# size of grid
+S = 7
+# number of bounding boxes per grid cell
+B = 2
+# no classes
+C = 20
 
 
 class VOCDataset(torch.utils.data.Dataset):
@@ -62,22 +67,29 @@ class VOCDataset(torch.utils.data.Dataset):
         # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
         image = torchvision.transforms.functional.normalize(image, mean=MEAN, std=STD)
 
-        return image, objects
+        label_tensor = self._create_label_tensor(objects, SIZE)
+
+        return image, objects, label_tensor
 
     def __len__(self):
         return len(self.dataset)
 
-    def collate_function(self, data):
+    @staticmethod
+    def collate_function(data):
         images = []
         objects_list = []
 
-        for image, objects in data:
+        for image, objects, _ in data:
             images.append(image)
             objects_list.append(objects)
 
+        labels_matrix_batch = data[0][2].unsqueeze(0)
+        for _, _, label_matrix in data[1:]:
+            labels_matrix_batch = torch.cat([labels_matrix_batch, label_matrix.unsqueeze(0)], axis=0)
+
         images = torch.stack(images, dim=0)
 
-        return images, objects_list
+        return images, objects_list, labels_matrix_batch
 
     def _remove_difficult_objects(self, objects):
         if not self.include_difficult:
@@ -86,7 +98,8 @@ class VOCDataset(torch.utils.data.Dataset):
         else:
             return objects
 
-    def _parse_objects(self, objects):
+    @staticmethod
+    def _parse_objects(objects):
         """Converts object dictionary such that it includes only 'name',
         'bdnbox' and numerical 'label' for each object"""
 
@@ -106,13 +119,14 @@ class VOCDataset(torch.utils.data.Dataset):
                 continue
         return new_objects
 
-    def _resize_image(self, img_arr, objects, size):
+    @staticmethod
+    def _resize_image(img_arr, objects, size):
         """
         :param img_arr: original image as a numpy array
         :param h: resized height dimension of image
         :param w: resized weight dimension of image
         """
-        # create resize transform pipeline
+        # create resize transform pipeline that resizes to SIZE
         transform = albumentations.Compose(
             [albumentations.Resize(height=size[1], width=size[0], always_apply=True)],
             bbox_params=albumentations.BboxParams(format='pascal_voc'))
@@ -120,10 +134,10 @@ class VOCDataset(torch.utils.data.Dataset):
         bboxes = []
 
         for object_dict in objects:
-            x_min = int(object_dict["bndbox"]["xmin"])
-            y_min = int(object_dict["bndbox"]["ymin"])
-            x_max = int(object_dict["bndbox"]["xmax"])
-            y_max = int(object_dict["bndbox"]["ymax"])
+            x_min = float(object_dict["bndbox"]["xmin"])
+            y_min = float(object_dict["bndbox"]["ymin"])
+            x_max = float(object_dict["bndbox"]["xmax"])
+            y_max = float(object_dict["bndbox"]["ymax"])
             class_id = int(object_dict["label"])
             bbox = np.array([x_min, y_min, x_max, y_max, class_id])
             bboxes.append(bbox)
@@ -143,6 +157,37 @@ class VOCDataset(torch.utils.data.Dataset):
 
         return image, objects
 
+    @staticmethod
+    def _create_label_tensor(objects, size):
+        label_matrix = torch.zeros((S, S, 5 + C))
+
+        for object_dict in objects:
+            class_label = int(object_dict["label"])
+            x, y, w, h = utils.xyxy_to_xywh(
+                object_dict["bndbox"]["xmin"], object_dict["bndbox"]["ymin"],
+                object_dict["bndbox"]["xmax"], object_dict["bndbox"]["ymax"],
+                size
+            )
+
+            # in yolo cell should be 0..1 in x and y
+            i, j = int(S * y), int(S * x)
+            x_relative_to_cell = S * x - j
+            y_relative_to_cell = S * y - i
+            w_relative_to_cell = S * w
+            h_relative_to_cell = S * h
+
+            # if there isn't an object in the cell
+            if label_matrix[i, j, 0] != 1:
+                label_matrix[i, j, 0] = 1
+                box_coords = torch.tensor(
+                    [x_relative_to_cell, y_relative_to_cell,
+                     w_relative_to_cell, h_relative_to_cell]
+                )
+                label_matrix[i, j, 1:5] = box_coords
+                label_matrix[i, j, class_label + 5] = 1
+
+        return label_matrix
+
 
 class DeNormalize(object):
     def __init__(self, mean, std):
@@ -156,10 +201,11 @@ class DeNormalize(object):
         Returns:
             Tensor: Normalized image.
         """
-        for t, m, s in zip(tensor, self.mean, self.std):
+        tensor_copy = tensor.clone()
+        for t, m, s in zip(tensor_copy, self.mean, self.std):
             t.mul_(s).add_(m)
             # The normalize code -> t.sub_(m).div_(s)
-        return tensor
+        return tensor_copy
 
 
 # prepare the dataset
@@ -184,14 +230,12 @@ def prepare_data():
     )
 
     # Check training batch
-    train_features, train_labels = next(iter(train_dl))
+    train_features, train_objects, train_label_matrix = next(iter(train_dl))
     print(f"Feature batch shape for training: {train_features.size()}")
-    print(f"Labels batch shape for training: {len(train_labels)}")
+    print(f"Objects batch shape for training: {len(train_objects)}")
+    print(f"Labels matrix batch shape for training: {train_label_matrix.size()}")
 
     print("Sample batch for training dataloader is presented below:")
     utils.show_images_batch(train_dl)
 
     return train_dl, test_dl
-
-
-
