@@ -1,9 +1,4 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import os
-import cv2
-import matplotlib.patches as patches
-from PIL import Image
 import torch
 import torchvision
 from torchvision.datasets import VOCDetection
@@ -19,6 +14,7 @@ STD = [0.229, 0.224, 0.225]
 classes_dict = {'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5, 'sheep': 6, 'aeroplane': 7,
                 'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
                 'chair': 15, 'dining table': 16, 'potted plant': 17, 'sofa': 18, 'tvmonitor': 19}
+
 # size of grid
 S = 7
 # number of bounding boxes per grid cell
@@ -129,7 +125,8 @@ class VOCDataset(torch.utils.data.Dataset):
         # create resize transform pipeline that resizes to SIZE
         transform = albumentations.Compose(
             [albumentations.Resize(height=size[1], width=size[0], always_apply=True)],
-            bbox_params=albumentations.BboxParams(format='pascal_voc'))
+            bbox_params=albumentations.BboxParams(format='pascal_voc')
+        )
 
         bboxes = []
 
@@ -173,8 +170,9 @@ class VOCDataset(torch.utils.data.Dataset):
             i, j = int(S * y), int(S * x)
             x_relative_to_cell = S * x - j
             y_relative_to_cell = S * y - i
-            w_relative_to_cell = S * w
-            h_relative_to_cell = S * h
+            # w and h should be relative to the image, so no multiplication by S
+            w_relative_to_cell = w
+            h_relative_to_cell = h
 
             # if there isn't an object in the cell
             if label_matrix[i, j, 0] != 1:
@@ -216,14 +214,14 @@ def prepare_data():
     # prepare data loaders
     train_dl = DataLoader(
         train,
-        batch_size=64,
+        batch_size=4,
         shuffle=False,
         num_workers=2,
         collate_fn=train.collate_function
     )
     test_dl = DataLoader(
         test,
-        batch_size=64,
+        batch_size=4,
         shuffle=False,
         num_workers=2,
         collate_fn=test.collate_function

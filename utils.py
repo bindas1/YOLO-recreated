@@ -60,7 +60,7 @@ def matplotlib_imshow(img, one_channel=False):
     if one_channel:
         plt.imshow(np_img, cmap="Greys")
     else:
-        plt.figure(figsize=(15, 15))
+        plt.figure(figsize=(25, 5))
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
 
 
