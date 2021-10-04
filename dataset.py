@@ -119,8 +119,8 @@ class VOCDataset(torch.utils.data.Dataset):
     def _resize_image(img_arr, objects, size):
         """
         :param img_arr: original image as a numpy array
-        :param h: resized height dimension of image
-        :param w: resized weight dimension of image
+        :param objects: dictionary containing all objects that should be resized
+        :param size: size of the resized image
         """
         # create resize transform pipeline that resizes to SIZE
         transform = albumentations.Compose(
@@ -171,15 +171,14 @@ class VOCDataset(torch.utils.data.Dataset):
             x_relative_to_cell = S * x - j
             y_relative_to_cell = S * y - i
             # w and h should be relative to the image, so no multiplication by S
-            w_relative_to_cell = w
-            h_relative_to_cell = h
+            # w_relative_to_cell = w
+            # h_relative_to_cell = h
 
             # if there isn't an object in the cell
             if label_matrix[i, j, 0] != 1:
                 label_matrix[i, j, 0] = 1
                 box_coords = torch.tensor(
-                    [x_relative_to_cell, y_relative_to_cell,
-                     w_relative_to_cell, h_relative_to_cell]
+                    [x_relative_to_cell, y_relative_to_cell, w, h]
                 )
                 label_matrix[i, j, 1:5] = box_coords
                 label_matrix[i, j, class_label + 5] = 1
@@ -214,14 +213,14 @@ def prepare_data():
     # prepare data loaders
     train_dl = DataLoader(
         train,
-        batch_size=4,
+        batch_size=16,
         shuffle=False,
         num_workers=2,
         collate_fn=train.collate_function
     )
     test_dl = DataLoader(
         test,
-        batch_size=4,
+        batch_size=16,
         shuffle=False,
         num_workers=2,
         collate_fn=test.collate_function

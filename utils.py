@@ -4,12 +4,16 @@ import numpy as np
 import torchvision
 from torch.utils.tensorboard import SummaryWriter
 import dataset
+import torch
+
 
 FONT = cv2.FONT_HERSHEY_PLAIN
 green = (0, 255, 0)
 red = (255, 0, 0)
 thickness = 1
 font_size = 1.5
+S = 7
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def show_image_with_classes(image, labels):
@@ -60,7 +64,7 @@ def matplotlib_imshow(img, one_channel=False):
     if one_channel:
         plt.imshow(np_img, cmap="Greys")
     else:
-        plt.figure(figsize=(25, 5))
+        plt.figure(figsize=(25, 15))
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
 
 
@@ -73,9 +77,68 @@ def xyxy_to_xywh(x1, y1, x2, y2, size):
     return x, y, w, h
 
 
-def xywh_to_xyxy(x, y, w, h, size):
+def xywh_to_xyxy_pixel(x, y, w, h, size):
     x1 = (x - w / 2) * size[0]
     y1 = (y - h / 2) * size[1]
     x2 = (x + w / 2) * size[0]
     y2 = (y + h / 2) * size[1]
     return x1, y1, x2, y2
+
+def xywh_to_xyxy(x, y, w, h, size):
+    x1 = (x - w / 2)
+    y1 = (y - h / 2)
+    x2 = (x + w / 2)
+    y2 = (y + h / 2)
+    return x1, y1, x2, y2
+
+def scale_to_image_xywh(x, y, w, h, S=S, device=device):
+    # the coordinates are scaled to particular cell, so we need to add the cell number and divide by number of cells
+    grid_x = torch.cat(S*[torch.Tensor(range(S)).reshape(1, -1)], axis=0).to(device)
+    grid_y = torch.cat(S*[torch.Tensor(range(S)).reshape(-1, 1)], axis=1).to(device)
+
+    # we have to multiply by the size of the grid
+    x_relative_to_image = (x + grid_x) / S
+    y_relative_to_image = (y + grid_y) / S
+    w_relative_to_image = w
+    h_relative_to_image = h
+    return x_relative_to_image, y_relative_to_image, w_relative_to_image, h_relative_to_image
+
+def xywh_to_xyxy_tensor(x, y, w, h, S=S, device=device): 
+    x_image, y_image, w_image, h_image = scale_to_image_xywh(x, y, w, h, S=S, device=device)
+    return xywh_to_xyxy(x_image, y_image, w_image, h_image, (S, S))
+
+def IOU_tensor(box_predicted, box_target, device=device):
+    # I assume that the box is a list of 4 coordinates xmin, ymin, xmax, ymax
+    # OVERLAP
+    x_pred = box_predicted[..., 0]
+    y_pred = box_predicted[..., 1]
+    w_pred = box_predicted[..., 2]
+    h_pred = box_predicted[..., 3]
+
+    x_target = box_predicted[..., 0]
+    y_target = box_predicted[..., 1]
+    w_target = box_predicted[..., 2]
+    h_target = box_predicted[..., 3]
+
+    x1_pred, y1_pred, x2_pred, y2_pred = xywh_to_xyxy_tensor(
+      x_pred, y_pred, w_pred, h_pred, device=device
+    )
+
+    x1_target, y1_target, x2_target, y2_target = xywh_to_xyxy_tensor(
+      x_target, y_target, w_target, h_target, device=device
+    )
+
+    x1_overlap = torch.max(x1_pred, x1_target)
+    y1_overlap = torch.max(y1_pred, y1_target)
+    x2_overlap = torch.min(x2_pred, x2_target)
+    y2_overlap = torch.min(y2_pred, y2_target)
+
+    x1_union = torch.min(x1_pred, x1_target)
+    y1_union = torch.min(y1_pred, y1_target)
+    x2_union = torch.max(x2_pred, x2_target)
+    y2_union = torch.max(y2_pred, y2_target)
+
+    area_overlap = (x2_overlap - x1_overlap) * (y2_overlap - y1_overlap)
+    area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
+
+    return area_overlap / area_union
