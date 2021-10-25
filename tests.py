@@ -5,6 +5,8 @@ from PIL import Image
 import torch
 
 
+device = "cpu"
+
 class TestVOCDataset(unittest.TestCase):
     def test_parse(self):
         objects = {'annotation': 
@@ -35,16 +37,52 @@ class TestVOCDataset(unittest.TestCase):
     #     )
 
 class TestUtils(unittest.TestCase):
-    def test_identical_boxes(self):
+    def test_iou_for_identical_boxes(self):
         # for two identical boxes iou should be 1 for all xywh
 
-        device = "cpu"
         box_test = torch.rand(64, 7, 7, 4).to(device)
         self.assertEqual(
             torch.all(utils.IOU_tensor(box_test, box_test, device=device) == 1),
             True
         )
 
+    def test_scale_to_image_xywh(self):
+        # this converts to global image coordinates
+        x = torch.tensor([[[[0.5], [0.25]], [[0.75], [0]]],
+                [[[0.5], [0.25]], [[0.75], [0]]]])[..., 0].to(device)
+        y = torch.tensor([[[[0.5], [0.25]], [[0.75], [0]]],
+                        [[[0.5], [0.25]], [[0.75], [0]]]])[..., 0].to(device)
+        w = torch.tensor([[[[0.25], [0.125]], [[0.5], [0.5]]],
+                        [[[0.25], [0.125]], [[0.5], [0.5]]]])[..., 0].to(device)
+        h = torch.tensor([[[[0.5], [0.125]], [[0.25], [0.5]]],
+                        [[[0.5], [0.125]], [[0.25], [0.5]]]])[..., 0].to(device)
+
+        refer_value = (torch.tensor([[[0.2500, 0.6250],
+                              [0.3750, 0.5000]],
+                     
+                             [[0.2500, 0.6250],
+                              [0.3750, 0.5000]]], device=device),
+                     torch.tensor([[[0.2500, 0.1250],
+                              [0.8750, 0.5000]],
+                     
+                             [[0.2500, 0.1250],
+                              [0.8750, 0.5000]]], device=device),
+                     torch.tensor([[[0.2500, 0.1250],
+                              [0.5000, 0.5000]],
+                     
+                             [[0.2500, 0.1250],
+                              [0.5000, 0.5000]]], device=device),
+                     torch.tensor([[[0.5000, 0.1250],
+                              [0.2500, 0.5000]],
+                     
+                             [[0.5000, 0.1250],
+                              [0.2500, 0.5000]]], device=device))
+
+        self.assertEqual(
+            [torch.equal(coord, refer_value) for coord, refer_value in zip(
+                utils.scale_to_image_xywh(x, y, w, h, S=2, device=device), refer_value)],
+            [True, True, True, True]
+        )
 
 if __name__ == '__main__':
     unittest.main()
