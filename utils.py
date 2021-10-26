@@ -16,6 +16,8 @@ S = 7
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+# === PLOTTING ===
+
 def show_image_with_classes(image, labels):
     un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
     # denormalize the image
@@ -68,6 +70,8 @@ def matplotlib_imshow(img, one_channel=False):
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
 
 
+# === COORDINATES CONVERSION ===
+
 def xyxy_to_xywh(x1, y1, x2, y2, size):
     # divide by width / height to normalize to 0...1
     x = (x1 + x2) / (2 * size[0])
@@ -107,6 +111,26 @@ def xywh_to_xyxy_tensor(x, y, w, h, S=S, device=device):
     x_image, y_image, w_image, h_image = scale_to_image_xywh(x, y, w, h, S=S, device=device)
     return xywh_to_xyxy(x_image, y_image, w_image, h_image, (S, S))
 
+
+# === IOU and Non Max SUPPRESSION ===
+
+def IOU(box_predicted, box_target):
+    # I assume that the box is a list of 4 coordinates xmin, ymin, xmax, ymax
+    x1_overlap = max(box_predicted[0], box_target[0])
+    y1_overlap = max(box_predicted[1], box_target[1])
+    x2_overlap = min(box_predicted[2], box_target[2])
+    y2_overlap = min(box_predicted[3], box_target[3])
+
+    x1_union = min(box_predicted[0], box_target[0])
+    y1_union = min(box_predicted[1], box_target[1])
+    x2_union = max(box_predicted[2], box_target[2])
+    y2_union = max(box_predicted[3], box_target[3])
+
+    area_overlap = (x2_overlap - x1_overlap) * (y2_overlap - y1_overlap)
+    area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
+
+    return area_overlap / area_union
+
 def IOU_tensor(box_predicted, box_target, device=device):
     # I assume that the box is a list of 4 coordinates xmin, ymin, xmax, ymax
     # OVERLAP
@@ -142,3 +166,55 @@ def IOU_tensor(box_predicted, box_target, device=device):
     area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
 
     return area_overlap / area_union
+
+def non_max_suppression(predicted_boxes, iou_threshold, threshold):
+    """
+    Performs non max suppression on the predicted boxes
+
+
+    Params:
+      predicted_box: list containing all predicted bounding boxes in format
+        [[predicted_class, confidence, xmin, ymin, xmax, ymax], ...]
+      iou threshold: threshold to check if bounding box is correct
+      threshold: threshold to check if bounding box has enough confidence of this bounding box
+    """
+    # filter threshold
+    predicted_boxes = [bbox for bbox in predicted_boxes if bbox[1] > threshold]
+
+    # we need to choose first the box with the highest confidence so we sort by this param
+    predicted_boxes.sort(reverse=True, key=lambda b: b[1])
+
+    nms_boxes = []
+
+    # while there exists element in predicted_boxes
+    while predicted_boxes:
+        # selects and removes from list
+        bbox = bboxes.pop(0)
+
+        # remove all bboxes that are of the same class and the iou is higher than iou_threshold
+        for compare_bbox in predicted_boxes:
+            if bbox[0] != compare_bbox[0]:
+                continue
+            else:
+                if IOU(bbox[2:], compare_bbox[2:]) > iou_threshold:
+                    # remove compare_bbox from predicted_boxes
+                    predicted_boxes.remove(compare_bbox)
+
+        nms_boxes.append(bbox)
+
+    return nms_boxes
+
+
+# === CHECKPOINTS ===
+
+def save_checkpoint(model, filename="yolo_checkpoint.pth.tar"):
+    print("--- Saving checkpoint ---")
+    torch.save(model.state_dict(), filename)
+
+def load_checkpoint(checkpoint, model, optimizer):
+    print("--- Loading checkpoint ---")
+    model.load_state_dict(checkpoint["state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer"])
+
+
+

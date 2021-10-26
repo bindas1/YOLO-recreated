@@ -40,7 +40,8 @@ class YoloLoss(nn.Module):
 
         return loss
 
-    def _get_predicted_box_and_confidence(self, output, target):
+    @staticmethod
+    def _get_predicted_box_and_confidence(output, target):
         """
         Calculates IOU for both boxes and for each sample chooses the coordinates of the better boxes
         Calculates also the confidence of the correct predictions
@@ -69,15 +70,14 @@ class YoloLoss(nn.Module):
         # ==========================
 
         predicted_box = exists_object_filter * predicted_box
-        box_targets = exists_object_filter * target[..., 1:5]
+        box_targets = exists_object_filter * box_targets
 
         # derivative of sqrt(0) is going to be inifinity so we add SMOOTH
         # could be negative - use sign
         predicted_box = exists_object_filter * torch.sign(predicted_box) * torch.sqrt(
             torch.abs(predicted_box + SMOOTH)
         )
-        box_targets =  torch.sqrt(box_targets)
-
+        box_targets = torch.sqrt(box_targets)
 
         # (N, S, S, 4) -> (N*S*S, 4) -> 1
         box_loss = LAMBDA_COORD * self.mse(
