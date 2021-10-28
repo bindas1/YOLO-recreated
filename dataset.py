@@ -6,6 +6,8 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 import albumentations
 import utils
+import os
+
 
 # CONSTANTS
 SIZE = 448, 448
@@ -236,3 +238,44 @@ def prepare_data():
     utils.show_images_batch(train_dl)
 
     return train_dl, test_dl
+
+# prepare the dataset
+def save_test(year):
+    year = str(year)
+
+    test_dataset = VOCDetection(
+        root="./data",
+        year=year,
+        image_set="test",
+        transform=None,
+        download=True
+    )
+
+    # test = VOCDataset(2007, "test")
+
+    cwd = os.getcwd()
+    path = os.path.join(cwd, "pjreddie_YOLOv1/darknet/test")
+
+    for image, annotations in test_dataset:
+        filename = annotations["annotation"]["filename"]
+        image_path = os.path.join(path, filename)
+        image.save(image_path, 'JPEG')
+
+        basename = filename.split('.')[0]
+        annotations_path = os.path.join(path, basename + ".txt")
+        with open(annotations_path, 'a') as f:
+            for class_object in annotations["annotation"]["object"]:
+                x_min = class_object["bndbox"]["xmin"]
+                y_min = class_object["bndbox"]["ymin"]
+                x_max = class_object["bndbox"]["xmax"]
+                y_max = class_object["bndbox"]["ymax"]  
+
+                f.write(class_object["name"] + " " + x_min + " " + y_min + " " + x_max + " " +y_max)
+
+        with open(os.path.join(path, "test.txt"), "a") as f:
+            f.write(basename)
+
+
+if __name__ == '__main__':
+    save_test(2007)
+
