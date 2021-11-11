@@ -111,6 +111,46 @@ def xywh_to_xyxy_tensor(x, y, w, h, S=S, device=device):
     x_image, y_image, w_image, h_image = scale_to_image_xywh(x, y, w, h, S=S, device=device)
     return xywh_to_xyxy(x_image, y_image, w_image, h_image, (S, S))
 
+def tensor_to_bbox_list(tensor, is_target, S=S):
+    """Input is an output/target tensor of size (batch_size, S,S,30)
+    is_target tells us if this is of shape (batch_size, S,S,25) if true
+    """
+    if not is_target:
+        # first find out which box is better
+        confidence_for_box1 = tensor[..., 0]
+        confidence_for_box2 = tensor[..., 5]
+
+        # find better box when it comes to model confidence
+        better_box1 = (confidence_for_box1 >= confidence_for_box2) * 1
+        better_box1.to(float)
+        better_box2 = 1.0 - better_box1
+
+        bboxes = better_box1[..., None] * tensor[..., 1:5] + better_box2[..., None] * tensor[..., 6:10]
+        bboxes.to(float)
+        confidence = better_box1[..., None] * tensor[..., 0:1] + better_box2[..., None] * tensor[..., 5:6]
+        confidence = confidence.to(float)
+    else:
+        bboxes = tensor[..., 1:5]
+        confidence = tensor[..., 0:1]
+
+    # convert from local cell coords to global image coords
+    xmin, ymin, xmax, ymax = xywh_to_xyxy_tensor(
+      bboxes[..., 0], bboxes[..., 1], bboxes[..., 2], bboxes[..., 3]
+    )
+
+    coords = torch.stack([xmin, ymin, xmax, ymax], -1)
+    class_prediction = tensor[..., 20:].argmax(-1, keepdim=True)
+
+    # resize to (batch_size, S, S, 6)
+    predictions = torch.cat([class_prediction, confidence, coords], dim=-1)
+
+    # now convert tensors of (batch_size, S, S, 6) -> [[[predicted_class, confidence, xmin, ymin, xmax, ymax], ...], ...]
+    # size of the list will be (batch_size, S*S, 6)
+    
+    predictions = predictions.reshape(predictions.size()[0], S * S, -1)
+
+    return predictions.tolist()
+
 
 # === IOU and Non Max SUPPRESSION ===
 
@@ -167,7 +207,7 @@ def IOU_tensor(box_predicted, box_target, device=device):
 
     return area_overlap / area_union
 
-def non_max_suppression(predicted_boxes, iou_threshold, threshold):
+def non_max_suppression(predicted_boxes, iou_threshold, conf_threshold):
     """
     Performs non max suppression on the predicted boxes
 
@@ -176,10 +216,10 @@ def non_max_suppression(predicted_boxes, iou_threshold, threshold):
       predicted_box: list containing all predicted bounding boxes in format
         [[predicted_class, confidence, xmin, ymin, xmax, ymax], ...]
       iou threshold: threshold to check if bounding box is correct
-      threshold: threshold to check if bounding box has enough confidence of this bounding box
+      conf_threshold: threshold to check if bounding box has enough confidence for this bounding box
     """
     # filter threshold
-    predicted_boxes = [bbox for bbox in predicted_boxes if bbox[1] > threshold]
+    predicted_boxes = [bbox for bbox in predicted_boxes if bbox[1] > conf_threshold]
 
     # we need to choose first the box with the highest confidence so we sort by this param
     predicted_boxes.sort(reverse=True, key=lambda b: b[1])
@@ -189,7 +229,7 @@ def non_max_suppression(predicted_boxes, iou_threshold, threshold):
     # while there exists element in predicted_boxes
     while predicted_boxes:
         # selects and removes from list
-        bbox = bboxes.pop(0)
+        bbox = predicted_boxes.pop(0)
 
         # remove all bboxes that are of the same class and the iou is higher than iou_threshold
         for compare_bbox in predicted_boxes:
@@ -203,6 +243,86 @@ def non_max_suppression(predicted_boxes, iou_threshold, threshold):
         nms_boxes.append(bbox)
 
     return nms_boxes
+
+def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.5):
+    """Function used to obtain prediction and target boxes for evaluation and depicting results"""
+
+    # switch to evaluation mode
+    model.eval()
+
+    predicted_boxes = []
+    target_boxes = []
+
+    # index to track picture id
+    pic_index = 0
+
+    if not single_batch:
+        for inputs, _, targets in data_loader:
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+
+            # deactivate autograd -> reduce memory usage and speed up computations
+            with torch.no_grad():
+                # predictions are tensor (batch_size, 7, 7, 30) when S=7
+                predictions = model(inputs)
+
+            batch_size = inputs.size()[0]
+
+            pred_bbox = tensor_to_bbox_list(predictions, is_target=False)
+            target_bbox = tensor_to_bbox_list(targets, is_target=True)
+
+            for i in range(batch_size):
+                nms_pred_boxes = non_max_suppression(
+                    pred_bbox[i], iou_threshold, conf_threshold
+                )
+
+                for box in nms_pred_boxes:
+                    # add the pic index to all elements and append to predicted_boxes
+                    predicted_boxes.append([pic_index] + box)
+                
+                for box in target_bbox[i]:
+                    if box[1] > conf_threshold:
+                        target_boxes.append([pic_index] + box)
+
+                pic_index += 1
+    else:
+    # FOR ONE BATCH TO BE DELETED LATER
+        inputs = data_loader[0].to(device)
+        targets = data_loader[2].to(device)
+
+        # deactivate autograd -> reduce memory usage and speed up computations
+        with torch.no_grad():
+            # predictions are tensor (batch_size, 7, 7, 30) when S=7
+            predictions = model(inputs)
+
+        batch_size = inputs.size()[0]
+
+        pred_bbox = tensor_to_bbox_list(predictions, is_target=False)
+        target_bbox = tensor_to_bbox_list(targets, is_target=True)
+
+        for i in range(batch_size):
+            nms_pred_boxes = non_max_suppression(
+                pred_bbox[i], iou_threshold, conf_threshold
+            )
+
+            for box in nms_pred_boxes:
+                # add the pic index to all elements and append to predicted_boxes
+                predicted_boxes.append([pic_index] + box)
+            
+            for box in target_bbox[i]:
+                if box[1] > conf_threshold:
+                    target_boxes.append([pic_index] + box)
+
+            pic_index += 1
+
+    model.train()
+
+    model.train()
+
+    return predicted_boxes, target_boxes
+
+
+
 
 
 # === CHECKPOINTS ===
