@@ -215,14 +215,14 @@ def prepare_data():
     # prepare data loaders
     train_dl = DataLoader(
         train,
-        batch_size=16,
+        batch_size=8,
         shuffle=False,
         num_workers=2,
         collate_fn=train.collate_function
     )
     test_dl = DataLoader(
         test,
-        batch_size=16,
+        batch_size=8,
         shuffle=False,
         num_workers=2,
         collate_fn=test.collate_function
@@ -273,7 +273,7 @@ def save_test(year):
                 f.write(class_object["name"] + " " + x_min + " " + y_min + " " + x_max + " " +y_max)
 
         with open(os.path.join(path, "test.txt"), "a") as f:
-            f.write(basename)
+            f.write(os.path.join(cwd, "pjreddie_YOLOv1/darknet/test/") + filename + "\n")
 
 
 if __name__ == '__main__':
