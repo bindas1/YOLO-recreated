@@ -14,6 +14,7 @@ thickness = 1
 font_size = 1.5
 S = 7
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+SMOOTH = 1e-6
 
 
 # === PLOTTING ===
@@ -88,7 +89,14 @@ def xywh_to_xyxy_pixel(x, y, w, h, size):
     y2 = (y + h / 2) * size[1]
     return x1, y1, x2, y2
 
-def xywh_to_xyxy(x, y, w, h, size):
+def xywh_to_xyxy_cell(x, y, w, h, size):
+    x1 = (x - w / 2 * size[0])
+    y1 = (y - h / 2 * size[1])
+    x2 = (x + w / 2 * size[0])
+    y2 = (y + h / 2 * size[1])
+    return x1, y1, x2, y2
+
+def xywh_to_xyxy_image(x, y, w, h, size):
     x1 = (x - w / 2)
     y1 = (y - h / 2)
     x2 = (x + w / 2)
@@ -109,7 +117,7 @@ def scale_to_image_xywh(x, y, w, h, S=S, device=device):
 
 def xywh_to_xyxy_tensor(x, y, w, h, S=S, device=device): 
     x_image, y_image, w_image, h_image = scale_to_image_xywh(x, y, w, h, S=S, device=device)
-    return xywh_to_xyxy(x_image, y_image, w_image, h_image, (S, S))
+    return xywh_to_xyxy_image(x_image, y_image, w_image, h_image, (S, S))
 
 def tensor_to_bbox_list(tensor, is_target, S=S):
     """Input is an output/target tensor of size (batch_size, S,S,30)
@@ -118,7 +126,7 @@ def tensor_to_bbox_list(tensor, is_target, S=S):
     if not is_target:
         # first find out which box is better
         confidence_for_box1 = tensor[..., 0]
-        confidence_for_box2 = tensor[..., 5]
+        confidence_for_box2 = tensor[..., 4]
 
         # find better box when it comes to model confidence
         better_box1 = (confidence_for_box1 >= confidence_for_box2) * 1
@@ -129,9 +137,11 @@ def tensor_to_bbox_list(tensor, is_target, S=S):
         bboxes.to(float)
         confidence = better_box1[..., None] * tensor[..., 0:1] + better_box2[..., None] * tensor[..., 5:6]
         confidence = confidence.to(float)
+        class_prediction = tensor[..., 10:].argmax(-1, keepdim=True)
     else:
         bboxes = tensor[..., 1:5]
         confidence = tensor[..., 0:1]
+        class_prediction = tensor[..., 5:].argmax(-1, keepdim=True)
 
     # convert from local cell coords to global image coords
     xmin, ymin, xmax, ymax = xywh_to_xyxy_tensor(
@@ -139,7 +149,7 @@ def tensor_to_bbox_list(tensor, is_target, S=S):
     )
 
     coords = torch.stack([xmin, ymin, xmax, ymax], -1)
-    class_prediction = tensor[..., 20:].argmax(-1, keepdim=True)
+    
 
     # resize to (batch_size, S, S, 6)
     predictions = torch.cat([class_prediction, confidence, coords], dim=-1)
@@ -166,8 +176,10 @@ def IOU(box_predicted, box_target):
     x2_union = max(box_predicted[2], box_target[2])
     y2_union = max(box_predicted[3], box_target[3])
 
-    area_overlap = (x2_overlap - x1_overlap) * (y2_overlap - y1_overlap)
+    area_overlap = max(0, (x2_overlap - x1_overlap)) * max(0, (y2_overlap - y1_overlap))
     area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
+    # make sure union doesn't contain 0
+    area_union += SMOOTH
 
     return area_overlap / area_union
 
@@ -179,17 +191,17 @@ def IOU_tensor(box_predicted, box_target, device=device):
     w_pred = box_predicted[..., 2]
     h_pred = box_predicted[..., 3]
 
-    x_target = box_predicted[..., 0]
-    y_target = box_predicted[..., 1]
-    w_target = box_predicted[..., 2]
-    h_target = box_predicted[..., 3]
+    x_target = box_target[..., 0]
+    y_target = box_target[..., 1]
+    w_target = box_target[..., 2]
+    h_target = box_target[..., 3]
 
-    x1_pred, y1_pred, x2_pred, y2_pred = xywh_to_xyxy_tensor(
-      x_pred, y_pred, w_pred, h_pred, device=device
+    x1_pred, y1_pred, x2_pred, y2_pred = xywh_to_xyxy_cell(
+      x_pred, y_pred, w_pred, h_pred, (S,S)
     )
 
-    x1_target, y1_target, x2_target, y2_target = xywh_to_xyxy_tensor(
-      x_target, y_target, w_target, h_target, device=device
+    x1_target, y1_target, x2_target, y2_target = xywh_to_xyxy_cell(
+      x_target, y_target, w_target, h_target, (S,S)
     )
 
     x1_overlap = torch.max(x1_pred, x1_target)
@@ -202,10 +214,15 @@ def IOU_tensor(box_predicted, box_target, device=device):
     x2_union = torch.max(x2_pred, x2_target)
     y2_union = torch.max(y2_pred, y2_target)
 
-    area_overlap = (x2_overlap - x1_overlap) * (y2_overlap - y1_overlap)
+    area_overlap = (x2_overlap - x1_overlap).clamp(0) * (y2_overlap - y1_overlap).clamp(0)
     area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
 
-    return area_overlap / area_union
+    # make sure union doesn't contain 0
+    area_union += SMOOTH
+
+    iou = area_overlap / area_union
+    # return torch.unsqueeze(iou, -1)
+    return iou
 
 def non_max_suppression(predicted_boxes, iou_threshold, conf_threshold):
     """
@@ -244,7 +261,7 @@ def non_max_suppression(predicted_boxes, iou_threshold, conf_threshold):
 
     return nms_boxes
 
-def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.5):
+def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.6, conf_threshold=0.5):
     """Function used to obtain prediction and target boxes for evaluation and depicting results"""
 
     # switch to evaluation mode
