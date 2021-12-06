@@ -30,12 +30,12 @@ class YoloLoss(nn.Module):
         predicted_box, confidence = self._get_predicted_box_and_confidence(output, target)
 
         # I only want to penalize if object exists in the cell
-        exists_object_filter = (target[..., 0:1] == 1) * 1
+        exists_object_filter = target[..., 0:1]
         exists_object_filter = exists_object_filter.to(float)
     
         loss = self._xywh_loss(predicted_box, target[..., 1:5], exists_object_filter)
-        loss += self._object_loss(confidence, exists_object_filter)
-        loss += self._no_object_loss(confidence, exists_object_filter)
+        loss += self._object_loss(confidence, target[..., 0:1], exists_object_filter)
+        loss += self._no_object_loss(output, target, exists_object_filter)
         loss += self._class_loss(output, target, exists_object_filter)
 
         return loss
@@ -74,10 +74,10 @@ class YoloLoss(nn.Module):
 
         # derivative of sqrt(0) is going to be inifinity so we add SMOOTH
         # could be negative - use sign
-        predicted_box = exists_object_filter * torch.sign(predicted_box) * torch.sqrt(
-            torch.abs(predicted_box + SMOOTH)
+        predicted_box[..., 2:4] = torch.sign(predicted_box[..., 2:4]) * torch.sqrt(
+            torch.abs(predicted_box[..., 2:4] + SMOOTH)
         )
-        box_targets = torch.sqrt(box_targets)
+        box_targets[..., 2:4] = torch.sqrt(box_targets[..., 2:4])
 
         # (N, S, S, 4) -> (N*S*S, 4) -> 1
         box_loss = LAMBDA_COORD * self.mse(
@@ -87,7 +87,7 @@ class YoloLoss(nn.Module):
 
         return box_loss
 
-    def _object_loss(self, confidence, exists_object_filter):
+    def _object_loss(self, confidence, conf_target, exists_object_filter):
         # ==========================
         # object loss (confidence)
         # ==========================
@@ -101,7 +101,7 @@ class YoloLoss(nn.Module):
 
         return object_loss
 
-    def _no_object_loss(self, confidence, exists_object_filter):
+    def _no_object_loss(self, output, target, exists_object_filter):
         # ==========================
         # no object loss (confidence)
         # ==========================
@@ -109,8 +109,13 @@ class YoloLoss(nn.Module):
         not_exists_object_filter = 1.0 - exists_object_filter
 
         no_object_loss = LAMBDA_NOOBJ * self.mse(
-            torch.flatten(not_exists_object_filter * confidence),
-            torch.flatten(not_exists_object_filter)
+            torch.flatten(not_exists_object_filter * output[..., 0:1], start_dim=1),
+            torch.flatten(not_exists_object_filter * target[..., 0:1], start_dim=1)
+        )
+
+        no_object_loss += LAMBDA_NOOBJ * self.mse(
+            torch.flatten(not_exists_object_filter * output[..., 5:6], start_dim=1),
+            torch.flatten(not_exists_object_filter * target[..., 0:1], start_dim=1)
         )
 
         return no_object_loss
@@ -130,5 +135,4 @@ class YoloLoss(nn.Module):
         )
 
         return class_loss
-
 
