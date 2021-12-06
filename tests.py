@@ -3,6 +3,8 @@ import utils
 import unittest
 from PIL import Image
 import torch
+import loss
+import architecture
 
 
 device = "cpu"
@@ -42,7 +44,8 @@ class TestUtils(unittest.TestCase):
 
         box_test = torch.rand(64, 7, 7, 4).to(device)
         self.assertEqual(
-            torch.all(utils.IOU_tensor(box_test, box_test, device=device) == 1),
+            # all should be 1 (or very close to one)
+            torch.all(utils.IOU_tensor(box_test, box_test, device=device) > 0.999),
             True
         )
 
@@ -83,6 +86,22 @@ class TestUtils(unittest.TestCase):
                 utils.scale_to_image_xywh(x, y, w, h, S=2, device=device), refer_value)],
             [True, True, True, True]
         )
+
+class TestArchitecture(unittest.TestCase):
+    def test_output_shape(self):
+        yolo_net = architecture.darknet()
+        input = torch.rand(4, 3, 448, 448)
+
+        self.assertEqual(yolo_net(input).size(), torch.Size([4, 7, 7, 30]))
+
+# class TestLoss(unittest.TestCase):
+#     def test_xywh_loss_shape(self):
+#         pred_box = torch.rand(16, 7, 7, 4)
+#         target_box = torch.rand(16, 7, 7, 4)
+#         exists_filter = torch.rand(16, 7, 7, 1)
+        
+
+
 
 if __name__ == '__main__':
     unittest.main()
