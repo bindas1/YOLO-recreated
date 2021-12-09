@@ -39,7 +39,7 @@ def show_image_with_classes(image, labels):
     plt.imshow(npimg)
 
 
-def show_images_batch(loader):
+def show_images_batch(loader, batch_size):
     writer = SummaryWriter()
 
     # get one batch of training images
@@ -50,13 +50,13 @@ def show_images_batch(loader):
     img_grid = torchvision.utils.make_grid(images)
 
     # show images
-    matplotlib_imshow(img_grid, one_channel=False)
+    matplotlib_imshow(img_grid, batch_size, one_channel=False)
 
     # write to tensorboard
     writer.add_image('batch of VOC dataset', img_grid)
 
 
-def matplotlib_imshow(img, one_channel=False):
+def matplotlib_imshow(img, batch_size, one_channel=False):
     if one_channel:
         img = img.mean(dim=0)
     # class can be static prob???
@@ -67,7 +67,7 @@ def matplotlib_imshow(img, one_channel=False):
     if one_channel:
         plt.imshow(np_img, cmap="Greys")
     else:
-        plt.figure(figsize=(40, 5))
+        plt.figure(figsize=(batch_size*5, 5))
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
 
 
@@ -261,7 +261,7 @@ def non_max_suppression(predicted_boxes, iou_threshold, conf_threshold):
 
     return nms_boxes
 
-def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.6, conf_threshold=0.5):
+def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.2):
     """Function used to obtain prediction and target boxes for evaluation and depicting results"""
 
     # switch to evaluation mode

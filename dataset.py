@@ -208,21 +208,21 @@ class DeNormalize(object):
 
 
 # prepare the dataset
-def prepare_data():
+def prepare_data(batch_size):
     # load dataset
     train = VOCDataset(2007, "trainval")
     test = VOCDataset(2007, "test")
     # prepare data loaders
     train_dl = DataLoader(
         train,
-        batch_size=8,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=2,
         collate_fn=train.collate_function
     )
     test_dl = DataLoader(
         test,
-        batch_size=8,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=2,
         collate_fn=test.collate_function
@@ -235,7 +235,7 @@ def prepare_data():
     print(f"Labels matrix batch shape for training: {train_label_matrix.size()}")
 
     print("Sample batch for training dataloader is presented below:")
-    utils.show_images_batch(train_dl)
+    utils.show_images_batch(train_dl, batch_size)
 
     return train_dl, test_dl
 
