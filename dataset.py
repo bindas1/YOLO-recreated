@@ -4,6 +4,7 @@ import torchvision
 from torchvision.datasets import VOCDetection
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset
 import albumentations
 import utils
 import os
@@ -210,16 +211,21 @@ class DeNormalize(object):
 # prepare the dataset
 def prepare_data(batch_size):
     # load dataset
-    train = VOCDataset(2007, "trainval")
-    test = VOCDataset(2007, "test")
-    # prepare data loaders
+    train_datasets = [
+        VOCDataset(2007, "trainval"),
+        VOCDataset(2007, "test"),
+        VOCDataset(2012, "trainval")
+    ]
+    train = ConcatDataset(train_datasets)
     train_dl = DataLoader(
         train,
         batch_size=batch_size,
         shuffle=False,
         num_workers=2,
-        collate_fn=train.collate_function
+        collate_fn=train_datasets[0].collate_function
     )
+
+    test = VOCDataset(2012, "test")
     test_dl = DataLoader(
         test,
         batch_size=batch_size,
