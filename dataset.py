@@ -212,9 +212,8 @@ class DeNormalize(object):
 def prepare_data(batch_size):
     # load dataset
     train_datasets = [
-        VOCDataset(2007, "trainval"),
-        VOCDataset(2007, "test"),
-        VOCDataset(2012, "trainval")
+        VOCDataset(2007, "trainval", include_difficult=True),
+        VOCDataset(2012, "trainval", include_difficult=True)
     ]
     train = ConcatDataset(train_datasets)
     train_dl = DataLoader(
@@ -225,7 +224,7 @@ def prepare_data(batch_size):
         collate_fn=train_datasets[0].collate_function
     )
 
-    test = VOCDataset(2012, "test")
+    test = VOCDataset(2007, "test", include_difficult=True)
     test_dl = DataLoader(
         test,
         batch_size=batch_size,
@@ -239,6 +238,9 @@ def prepare_data(batch_size):
     print(f"Feature batch shape for training: {train_features.size()}")
     print(f"Objects batch shape for training: {len(train_objects)}")
     print(f"Labels matrix batch shape for training: {train_label_matrix.size()}")
+
+    print(f"Size of training set: {len(train_dl)*batch_size}")
+    print(f"Size of test set: {len(test_dl)*batch_size}")
 
     print("Sample batch for training dataloader is presented below:")
     utils.show_images_batch(train_dl, batch_size)
