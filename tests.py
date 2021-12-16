@@ -5,6 +5,7 @@ from PIL import Image
 import torch
 import loss
 import architecture
+import numpy as np
 
 
 device = "cpu"
@@ -19,9 +20,11 @@ class TestVOCDataset(unittest.TestCase):
                 'segmented': '0', 'object': [{'name': 'train', 'pose': 'Unspecified', 'truncated': '0', 'difficult': '0', 'bndbox': {'xmin': '139', 'ymin': '200', 'xmax': '207', 'ymax': '301'}}]}}
 
         objects = objects["annotation"]["object"]
-        test = dataset.VOCDataset(2007, "test")
-        refer_value = [{'name': 'train', 'bndbox': {'xmin': '139', 'ymin': '200', 'xmax': '207', 'ymax': '301'}, 'label': 13}]
+        test = dataset.VOCDataset(2007, "test", False, None)
 
+        # refer_value = [{'name': 'train', 'bndbox': {'xmin': '139', 'ymin': '200', 'xmax': '207', 'ymax': '301'}, 'label': 13}]
+        refer_value = [np.array([139., 200., 207., 301.,  13.])]
+        print(test._parse_objects(objects))
 
         self.assertEqual(test._parse_objects(objects), refer_value, "Should properly parse objects")
 
