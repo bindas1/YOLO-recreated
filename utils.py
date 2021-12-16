@@ -16,21 +16,26 @@ S = 7
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SMOOTH = 1e-6
 
+classes_dict = {'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5, 'sheep': 6, 'aeroplane': 7,
+                'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
+                'chair': 15, 'dining table': 16, 'potted plant': 17, 'sofa': 18, 'tvmonitor': 19}
+inverse_classes_dict = {v: k for k, v in classes_dict.items()}
+
 
 # === PLOTTING ===
 
-def show_image_with_classes(image, labels):
+def show_image_with_classes_(image, labels):
     un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
     # denormalize the image
     npimg = un_norm(image.clone()).numpy()
     npimg = npimg.transpose((1, 2, 0)).copy()
 
-    for object_dict in labels:
-        x = int(object_dict["bndbox"]["xmin"])
-        y = int(object_dict["bndbox"]["ymin"])
-        x2 = int(object_dict["bndbox"]["xmax"])
-        y2 = int(object_dict["bndbox"]["ymax"])
-        class_name = object_dict["name"]
+    for bbox in labels:
+        x = int(bbox[0])
+        y = int(bbox[1])
+        x2 = int(bbox[2])
+        y2 = int(bbox[3])
+        class_name = inverse_classes_dict[int(bbox[4])]
 
         cv2.rectangle(npimg, (x, y), (x2, y2), green, thickness)
         cv2.putText(npimg, class_name, (x, y), FONT, font_size, red, thickness + 2)
@@ -338,10 +343,6 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
 
     return predicted_boxes, target_boxes
 
-
-
-
-
 # === CHECKPOINTS ===
 
 def save_checkpoint(model, filename="yolo_checkpoint.pth.tar"):
@@ -353,5 +354,26 @@ def load_checkpoint(checkpoint, model, optimizer):
     model.load_state_dict(checkpoint["state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer"])
 
+
+# ==== IF USING DICT INSTEAD OF LIST FOR LABELS
+
+def show_image_with_classes_dict(image, labels):
+    un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
+    # denormalize the image
+    npimg = un_norm(image.clone()).numpy()
+    npimg = npimg.transpose((1, 2, 0)).copy()
+
+    for object_dict in labels:
+        x = int(object_dict["bndbox"]["xmin"])
+        y = int(object_dict["bndbox"]["ymin"])
+        x2 = int(object_dict["bndbox"]["xmax"])
+        y2 = int(object_dict["bndbox"]["ymax"])
+        class_name = object_dict["name"]
+
+        cv2.rectangle(npimg, (x, y), (x2, y2), green, thickness)
+        cv2.putText(npimg, class_name, (x, y), FONT, font_size, red, thickness + 2)
+
+    # Display the image
+    plt.imshow(npimg)
 
 

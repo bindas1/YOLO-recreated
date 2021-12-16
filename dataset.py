@@ -8,6 +8,8 @@ from torch.utils.data import ConcatDataset
 import albumentations
 import utils
 import os
+from albumentations.pytorch import ToTensorV2
+import albumentations as A
 
 
 # CONSTANTS
@@ -25,9 +27,21 @@ B = 2
 # no classes
 C = 20
 
+ALBUMENTATIONS_TRANSFORM = A.Compose([
+    A.Resize(448, 448), 
+    A.RandomCrop(224, 224),
+    A.HorizontalFlip(),
+    A.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],
+    ),
+    ToTensorV2()
+])
+
+
 
 class VOCDataset(torch.utils.data.Dataset):
-    def __init__(self, year, image_set, include_difficult=False, transforms=None):
+    def __init__(self, year, image_set, include_difficult, transforms):
         self.image_set = image_set
         assert self.image_set in ["train", "val", "trainval", "test"]
 
@@ -55,16 +69,12 @@ class VOCDataset(torch.utils.data.Dataset):
         objects = self._remove_difficult_objects(objects)
         objects = self._parse_objects(objects)
 
-        # resize image and scale bounding box coordinates
-        image, objects = self._resize_image(image, objects, SIZE)
-
         # apply transformations, convert to tensor and normalize
         if self.transforms is not None:
             image, objects = self.transforms(image, objects)
-        image = torchvision.transforms.functional.to_tensor(image)
-
-        # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
-        image = torchvision.transforms.functional.normalize(image, mean=MEAN, std=STD)
+        else:
+            # resize image and scale bounding box coordinates
+            image, objects = self._default_transformations(image, objects, SIZE)
 
         label_tensor = self._create_label_tensor(objects, SIZE)
 
@@ -100,7 +110,7 @@ class VOCDataset(torch.utils.data.Dataset):
     @staticmethod
     def _parse_objects(objects):
         """Converts object dictionary such that it includes only 'name',
-        'bdnbox' and numerical 'label' for each object"""
+        'bdnbox' and numerical 'label' for each object and then changes it to list of bboxes"""
 
         remove_features = ["truncated", "pose", "difficult"]
         new_objects = []
@@ -116,24 +126,14 @@ class VOCDataset(torch.utils.data.Dataset):
                 # if it contains object other than specified in classes_dict
                 # we don't want to remove it from labels
                 continue
-        return new_objects
-
-    @staticmethod
-    def _resize_image(img_arr, objects, size):
-        """
-        :param img_arr: original image as a numpy array
-        :param objects: dictionary containing all objects that should be resized
-        :param size: size of the resized image
-        """
-        # create resize transform pipeline that resizes to SIZE
-        transform = albumentations.Compose(
-            [albumentations.Resize(height=size[1], width=size[0], always_apply=True)],
-            bbox_params=albumentations.BboxParams(format='pascal_voc')
-        )
-
+                
+        # # return new objects if u want dict, else proceed further to get list
+        # return new_objects
+        
+        # we want list [xmin, ymin, xmax, ymax, label] for transform
         bboxes = []
 
-        for object_dict in objects:
+        for object_dict in new_objects:
             x_min = float(object_dict["bndbox"]["xmin"])
             y_min = float(object_dict["bndbox"]["ymin"])
             x_max = float(object_dict["bndbox"]["xmax"])
@@ -141,32 +141,36 @@ class VOCDataset(torch.utils.data.Dataset):
             class_id = int(object_dict["label"])
             bbox = np.array([x_min, y_min, x_max, y_max, class_id])
             bboxes.append(bbox)
+            
+        return bboxes
 
-        transformed = transform(image=img_arr, bboxes=bboxes)
-        image = transformed["image"]
-        bboxes = transformed["bboxes"]
+    @staticmethod
+    def _default_transformations(img_arr, objects, size):
+        """
+        :param img_arr: original image as a numpy array
+        :param objects: list containing all objects that should be resized
+        :param size: size of the resized image
+        """
+        # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
+        transform = albumentations.Compose(
+            [albumentations.Resize(height=size[1], width=size[0], always_apply=True),
+            A.Normalize(mean=MEAN, std=STD),
+            ToTensorV2()],
+            bbox_params=albumentations.BboxParams(format='pascal_voc')
+        )
 
-        for i, object_dict in enumerate(objects):
-            new_bndbox = {
-                "xmin": bboxes[i][0],
-                "ymin": bboxes[i][1],
-                "xmax": bboxes[i][2],
-                "ymax": bboxes[i][3]
-            }
-            object_dict["bndbox"] = new_bndbox
+        transformed = transform(image=img_arr, bboxes=objects)
 
-        return image, objects
+        return transformed["image"], transformed["bboxes"]
 
     @staticmethod
     def _create_label_tensor(objects, size):
         label_matrix = torch.zeros((S, S, 5 + C))
 
-        for object_dict in objects:
-            class_label = int(object_dict["label"])
+        for bbox in objects:
+            class_label = int(bbox[4])
             x, y, w, h = utils.xyxy_to_xywh(
-                object_dict["bndbox"]["xmin"], object_dict["bndbox"]["ymin"],
-                object_dict["bndbox"]["xmax"], object_dict["bndbox"]["ymax"],
-                size
+                bbox[0], bbox[1], bbox[2], bbox[3], size
             )
 
             # in yolo cell should be 0..1 in x and y
@@ -209,11 +213,11 @@ class DeNormalize(object):
 
 
 # prepare the dataset
-def prepare_data(batch_size):
+def prepare_data(batch_size, include_difficult, transforms, years):
     # load dataset
+
     train_datasets = [
-        VOCDataset(2007, "trainval", include_difficult=True),
-        VOCDataset(2012, "trainval", include_difficult=True)
+        VOCDataset(year, "trainval", include_difficult, transforms) for year in years
     ]
     train = ConcatDataset(train_datasets)
     train_dl = DataLoader(
@@ -224,7 +228,7 @@ def prepare_data(batch_size):
         collate_fn=train_datasets[0].collate_function
     )
 
-    test = VOCDataset(2007, "test", include_difficult=True)
+    test = VOCDataset(2007, "test", include_difficult, transforms)
     test_dl = DataLoader(
         test,
         batch_size=batch_size,
@@ -285,5 +289,6 @@ def save_test(year):
 
 
 if __name__ == '__main__':
-    save_test(2007)
+    # save_test(2007)
+    ...
 
