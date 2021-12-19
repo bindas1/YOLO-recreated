@@ -78,7 +78,7 @@ class VOCDataset(torch.utils.data.Dataset):
 
         label_tensor = self._create_label_tensor(objects, SIZE)
 
-        return image, objects, label_tensor
+        return image, np.asarray(objects), label_tensor
 
     def __len__(self):
         return len(self.dataset)
@@ -224,7 +224,7 @@ def prepare_data(batch_size, include_difficult, transforms, years):
         train,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=4,
         collate_fn=train_datasets[0].collate_function
     )
 
@@ -233,7 +233,7 @@ def prepare_data(batch_size, include_difficult, transforms, years):
         test,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=4,
         collate_fn=test.collate_function
     )
 

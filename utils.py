@@ -140,6 +140,9 @@ def tensor_to_bbox_list(tensor, is_target, S=S):
 
         bboxes = better_box1[..., None] * tensor[..., 1:5] + better_box2[..., None] * tensor[..., 6:10]
         bboxes.to(float)
+
+
+
         confidence = better_box1[..., None] * tensor[..., 0:1] + better_box2[..., None] * tensor[..., 5:6]
         confidence = confidence.to(float)
         class_prediction = tensor[..., 10:].argmax(-1, keepdim=True)
@@ -279,9 +282,11 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
     pic_index = 0
 
     if not single_batch:
-        for inputs, _, targets in data_loader:
+        labels = np.array([])
+
+        for inputs, batch_labels, _ in data_loader:
             inputs = inputs.to(device)
-            targets = targets.to(device)
+            batch_labels = batch_labels[:]
 
             # deactivate autograd -> reduce memory usage and speed up computations
             with torch.no_grad():
@@ -291,7 +296,9 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
             batch_size = inputs.size()[0]
 
             pred_bbox = tensor_to_bbox_list(predictions, is_target=False)
-            target_bbox = tensor_to_bbox_list(targets, is_target=True)
+
+            # get indices of empty arrays
+            to_remove = []
 
             for i in range(batch_size):
                 nms_pred_boxes = non_max_suppression(
@@ -301,16 +308,32 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
                 for box in nms_pred_boxes:
                     # add the pic index to all elements and append to predicted_boxes
                     predicted_boxes.append([pic_index] + box)
-                
-                for box in target_bbox[i]:
-                    if box[1] > conf_threshold:
-                        target_boxes.append([pic_index] + box)
+
+                #if the array isn't empty
+                if batch_labels[i].size != 0:
+                    # insert index of photo to target labels
+                    batch_labels[i] = np.insert(batch_labels[i], 0, pic_index, axis=1)
+                else:
+                    to_remove.append(i)
 
                 pic_index += 1
+
+            for idx in sorted(to_remove, reverse=True):
+                del batch_labels[idx]
+        
+            # stack labels to one big numpy array
+            batch_labels = np.concatenate(batch_labels)
+
+            # concatenate with rest of the labels
+            if labels.size:
+                labels = np.vstack([labels, batch_labels])
+            else:
+                labels = batch_labels
+
     else:
     # FOR ONE BATCH TO BE DELETED LATER
         inputs = data_loader[0].to(device)
-        targets = data_loader[2].to(device)
+        batch_labels = data_loader[1][:]
 
         # deactivate autograd -> reduce memory usage and speed up computations
         with torch.no_grad():
@@ -320,7 +343,6 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
         batch_size = inputs.size()[0]
 
         pred_bbox = tensor_to_bbox_list(predictions, is_target=False)
-        target_bbox = tensor_to_bbox_list(targets, is_target=True)
 
         for i in range(batch_size):
             nms_pred_boxes = non_max_suppression(
@@ -331,28 +353,37 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
                 # add the pic index to all elements and append to predicted_boxes
                 predicted_boxes.append([pic_index] + box)
             
-            for box in target_bbox[i]:
-                if box[1] > conf_threshold:
-                    target_boxes.append([pic_index] + box)
+            # insert index of photo to target labels
+            batch_labels[i] = np.insert(batch_labels[i], 0, pic_index, axis=1)
 
             pic_index += 1
 
-    model.train()
+        # stack labels to one big numpy array
+        labels = np.concatenate(batch_labels)
+
+    # change the order from [idx,x,y,x,y,c_id]->[idx,c_id,x,y,x,y]
+    labels = labels[:, [0, 5, 1, 2, 3, 4]]
 
     model.train()
 
-    return predicted_boxes, target_boxes
+    return np.array(predicted_boxes), labels
 
 # === CHECKPOINTS ===
 
-def save_checkpoint(model, filename="yolo_checkpoint.pth.tar"):
+def save_checkpoint(model, optimizer, filename="yolo_checkpoint.pth.tar"):
     print("--- Saving checkpoint ---")
-    torch.save(model.state_dict(), filename)
+    torch.save({
+            # 'epoch': EPOCH,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+    }, filename)
 
-def load_checkpoint(checkpoint, model, optimizer):
+def load_checkpoint(checkpoint_file, model, optimizer):
     print("--- Loading checkpoint ---")
-    model.load_state_dict(checkpoint["state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
+    checkpoint = torch.load(checkpoint_file, map_location=device)
+    print("is this running")
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
 
 # ==== IF USING DICT INSTEAD OF LIST FOR LABELS
