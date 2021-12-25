@@ -4,6 +4,7 @@ import wandb
 import architecture
 import dataset
 import utils
+# import evaluation
 from tqdm.notebook import tqdm
 
 
@@ -17,12 +18,13 @@ def model_pipeline(hyp, data_predefined=False, train_dl=None, test_dl=None, devi
         model, train_dl, test_dl, criterion, optimizer = make(config, data_predefined, train_dl, test_dl)
         
         # and use them to train the model
-        train(model, train_dl, criterion, optimizer, config)
+        train(model, train_dl, test_dl, criterion, optimizer, config)
 
-        # utils.save_checkpoint(model, optimizer)
+        # can be moved to evaluation func
+        utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
 
         # and test its final performance
-#         evaluate(model, test_dl)
+        # evalutaion.evaluate_model(model, train_dl, config, test_dl=False)
         
     return model, optimizer
 
@@ -67,30 +69,49 @@ def make(config, data_predefined, train_dl_predef, test_dl_predef):
     return model, train_dl, test_dl, criterion, optimizer
         
 
-def train(model, train_dl, criterion, optimizer, config):
+def train(model, train_dl, test_dl, criterion, optimizer, config):
     # Tell wandb to watch what the model gets up to: gradients, weights, and more!
     wandb.watch(model, criterion, log="all")
     
     # enumerate epochs
     for epoch in tqdm(range(config.epochs)):
         running_loss = 0.0
+        running_val_loss = 0.0
+        idx = 1
         
         if not config.is_one_batch:
             for i, (inputs, _, targets) in enumerate(train_dl):
                 loss, batch_size = train_batch(inputs, targets, model, optimizer, criterion)
+                running_loss += loss.item() * batch_size
                 if i%100==0:
                     print(loss.item(), epoch)
-                running_loss += loss.item() * batch_size
             running_loss = running_loss / len(train_dl)
 
+            for i, (inputs, _, targets) in enumerate(test_dl):
+                val_loss = test_batch(inputs, targets, model, criterion)
+                if i%100==0:
+                    print("VAL LOSS {}, {}".format(val_loss, epoch))
+                running_val_loss += val_loss * batch_size
+                # if idx % 25 == 0:
+                #     wandb.log({
+                #         "test_loss_batches": running_val_loss / idx
+                #     }, step=idx//25)
+                # idx += 1
+            running_val_loss = running_val_loss / len(test_dl)
         else:
             with torch.autograd.detect_anomaly():
                 # for one batch only
                 loss, batch_size = train_batch(train_dl[0], train_dl[2], model, optimizer, criterion)
                 running_loss = loss.item() * batch_size
-            
-#         loss_values.append(epoch_loss)
-        wandb.log({"epoch": epoch, "avg_batch_loss": running_loss})
+
+                val_loss = test_batch(test_dl[0], test_dl[2], model, criterion)
+                running_val_loss = val_loss * batch_size
+
+        wandb.log({
+            "epoch": epoch, 
+            "avg_batch_loss": running_loss,
+            "test_loss": running_val_loss
+        }, step=epoch)
 #         wandb.log({"epoch": epoch, "loss": loss}, step=example_ct)
         print("Average epoch loss {}".format(running_loss))
 
@@ -111,8 +132,22 @@ def train_batch(images, labels, model, optimizer, criterion):
     
     size = images.size(0)
     del images, labels
+
     return loss, size
     # return loss, images.size(0)
+
+def test_batch(val_images, val_labels, model, criterion):
+    # get test loss
+    model.eval()
+
+    val_images, val_labels = val_images.to(device), val_labels.to(device)
+
+    with torch.no_grad():
+        val_predictions = model(val_images)
+    test_loss = criterion(val_predictions, val_labels)
+
+    model.train()
+    return test_loss.item()
 
 def train_log(loss, example_ct, epoch):
     # Where the magic happens

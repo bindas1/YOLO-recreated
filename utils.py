@@ -186,6 +186,7 @@ def IOU(box_predicted, box_target):
 
     area_overlap = max(0, (x2_overlap - x1_overlap)) * max(0, (y2_overlap - y1_overlap))
     area_union = (x2_union - x1_union) * (y2_union - y1_union) - 2 * (x1_overlap - x1_union) * (y2_union - y2_overlap)
+    
     # make sure union doesn't contain 0
     area_union += SMOOTH
 
@@ -269,8 +270,75 @@ def non_max_suppression(predicted_boxes, iou_threshold, conf_threshold):
 
     return nms_boxes
 
+def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_threshold=0.2, single_batch=False):
+    """Function used to obtain prediction and target boxes for evaluation and depicting results
+    Results:
+    - target: list of numpy arras (each numpy array for each photo) with bboxes [xmin, ymin, xmax,  ymax, label]
+    - predicted_boxes: list of numpy arras (each numpy array for each photo) with bboxes [xmin, ymin, xmax,  ymax, label, confidence]
+    """
+
+    # switch to evaluation mode
+    model.eval()
+
+    predicted_boxes = []
+
+    # index to track picture id
+    pic_index = 0
+
+    
+    labels = []
+
+    for inputs, batch_labels, _ in data_loader:
+        inputs = inputs.to(device)
+        batch_labels = batch_labels[:]
+
+        # deactivate autograd -> reduce memory usage and speed up computations
+        with torch.no_grad():
+            # predictions are tensor (batch_size, 7, 7, 30) when S=7
+            predictions = model(inputs)
+
+        batch_size = inputs.size()[0]
+
+        pred_bbox = utils.tensor_to_bbox_list(predictions, is_target=False)
+
+        for i in range(batch_size):
+            nms_pred_boxes = utils.non_max_suppression(
+                pred_bbox[i], iou_threshold, conf_threshold
+            )
+
+            image_predictions = np.array([])
+
+            for box in nms_pred_boxes:
+                box = np.array(box)
+                box = box[[2, 3, 4, 5, 0, 1]]
+                box[:4] = box[:4] * 448
+                # concatenate with rest of the labels
+                if image_predictions.size:
+                    image_predictions = np.vstack([image_predictions, box])
+                else:
+                    image_predictions = box
+                    
+            image_predictions = image_predictions.reshape(-1, 6)
+
+            predicted_boxes.append(image_predictions)
+
+            pic_index += 1
+
+        labels += [l.reshape(-1,5) for l in batch_labels]
+
+        if single_batch:
+            break
+
+    model.train()
+
+    return predicted_boxes, labels
+
 def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.2):
-    """Function used to obtain prediction and target boxes for evaluation and depicting results"""
+    """Function used to obtain prediction and target boxes for evaluation and depicting results
+    Results:
+    - target: array of numpy arras with bboxes [photo_id, class, xmin, ymin, xmax,  ymax]
+    - predicted_boxes: array of numpy arras (each numpy array for each photo) with bboxes [photo_id, class, confidence, xmin, ymin, xmax,  ymax]
+    """
 
     # switch to evaluation mode
     model.eval()

@@ -29,14 +29,14 @@ C = 20
 
 ALBUMENTATIONS_TRANSFORM = A.Compose([
     A.Resize(448, 448), 
-    A.RandomCrop(224, 224),
+    # A.RandomCrop(224, 224),
     A.HorizontalFlip(),
     A.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225],
     ),
     ToTensorV2()
-])
+], bbox_params=albumentations.BboxParams(format='pascal_voc'))
 
 
 
@@ -70,8 +70,8 @@ class VOCDataset(torch.utils.data.Dataset):
         objects = self._parse_objects(objects)
 
         # apply transformations, convert to tensor and normalize
-        if self.transforms is not None:
-            image, objects = self.transforms(image, objects)
+        if self.transforms:
+            image, objects = self._extended_transformations(image, objects, SIZE)
         else:
             # resize image and scale bounding box coordinates
             image, objects = self._default_transformations(image, objects, SIZE)
@@ -154,6 +154,26 @@ class VOCDataset(torch.utils.data.Dataset):
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
         transform = albumentations.Compose(
             [albumentations.Resize(height=size[1], width=size[0], always_apply=True),
+            A.Normalize(mean=MEAN, std=STD),
+            ToTensorV2()],
+            bbox_params=albumentations.BboxParams(format='pascal_voc')
+        )
+
+        transformed = transform(image=img_arr, bboxes=objects)
+
+        return transformed["image"], transformed["bboxes"]
+
+    @staticmethod
+    def _extended_transformations(img_arr, objects, size):
+        """
+        :param img_arr: original image as a numpy array
+        :param objects: list containing all objects that should be resized
+        :param size: size of the resized image
+        """
+        # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
+        transform = albumentations.Compose(
+            [albumentations.Resize(height=size[1], width=size[0], always_apply=True),
+            A.HorizontalFlip(),
             A.Normalize(mean=MEAN, std=STD),
             ToTensorV2()],
             bbox_params=albumentations.BboxParams(format='pascal_voc')
