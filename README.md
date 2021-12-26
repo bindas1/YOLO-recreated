@@ -26,4 +26,13 @@ pip install -r ./requirements/requirements_linux.txt
 python main.py
 ```
 When prompted choose 1 (if wandb account not created)
+
 <img width="341" alt="image" src="https://user-images.githubusercontent.com/38891725/147409972-0ae85095-480d-4d42-92ff-3635280959af.png">
+
+Go to https://wandb.ai/authorize?signup=true, sign in using github, google or create account.
+
+Copy the API after the sign up process is complete and paste to the terminal. (This process only needs to be done once)
+
+After the login you should see that the data is being downloaded. If You want to make sure that the installation process is complete I suggest running the code with `config["is_one_batch"]` set to `True` in `main.py`.
+
+
