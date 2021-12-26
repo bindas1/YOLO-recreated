@@ -5,13 +5,13 @@ import architecture
 import dataset
 import utils
 import evaluation
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def model_pipeline(hyp, data_predefined=False, train_dl=None, test_dl=None, device=device):
-    with wandb.init(project="YOLO-recreated", entity="bindas1", config=hyp):
+    with wandb.init(project="YOLO-recreated", entity="bindas_try", config=hyp):
         config = wandb.config
         
         # make the model, data, and optimization problem
@@ -38,7 +38,7 @@ def make(config, data_predefined, train_dl_predef, test_dl_predef):
         
     if config.is_one_batch:
         train_dl = next(iter(train_dl))
-        test_dl = train_dl
+        test_dl = next(iter(test_dl))
 
     # Make the model
     model = architecture.darknet(config.batch_norm)

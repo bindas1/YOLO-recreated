@@ -29,7 +29,7 @@ def evaluate_model(model, dataloader, config, test_dl=True, iou_threshold=0.5):
     )
 
     dl_name = "Test set"
-    if test_dl:
+    if not test_dl:
         dl_name = "Train set"
 
     confusion_matrix.plot(".", class_names=CLASSES, normalize=True)

@@ -285,8 +285,10 @@ def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_thresh
     # index to track picture id
     pic_index = 0
 
-    
     labels = []
+
+    if single_batch:
+        data_loader = [(data_loader[0], data_loader[1], data_loader[2])]
 
     for inputs, batch_labels, _ in data_loader:
         inputs = inputs.to(device)

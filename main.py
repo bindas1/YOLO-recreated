@@ -1,6 +1,8 @@
 import wandb
 import train
 import evaluation
+import dataset
+import utils
 
 
 # from the paper for SGD
@@ -28,7 +30,7 @@ if __name__ == "__main__":
 	    model_predefined=False,
 	    checkpoint=None, # only needed if model_predefined=True
 	    # DATASET PARAMS AND HYPERPARAMS
-	    # for 16 GB without checking test_loss it's best to use 64
+	    # for 16 GB without checking test_loss it's best to use 64 (if not logging test loss)
 	    batch_size=32,
 	    train_years=[2007, 2012],
 	    batch_norm=True,
