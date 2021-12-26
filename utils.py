@@ -72,7 +72,7 @@ def matplotlib_imshow(img, batch_size, one_channel=False):
     if one_channel:
         plt.imshow(np_img, cmap="Greys")
     else:
-        plt.figure(figsize=(batch_size*5, 5))
+        plt.figure(figsize=(batch_size, batch_size*batch_size/8/8))
         plt.imshow(np.transpose(np_img, (1, 2, 0)), aspect='auto')
 
 
@@ -299,10 +299,10 @@ def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_thresh
 
         batch_size = inputs.size()[0]
 
-        pred_bbox = utils.tensor_to_bbox_list(predictions, is_target=False)
+        pred_bbox = tensor_to_bbox_list(predictions, is_target=False)
 
         for i in range(batch_size):
-            nms_pred_boxes = utils.non_max_suppression(
+            nms_pred_boxes = non_max_suppression(
                 pred_bbox[i], iou_threshold, conf_threshold
             )
 
@@ -449,7 +449,6 @@ def save_checkpoint(model, optimizer, filename="yolo_checkpoint.pth.tar"):
 def load_checkpoint(checkpoint_file, model, optimizer):
     print("--- Loading checkpoint ---")
     checkpoint = torch.load(checkpoint_file, map_location=device)
-    print("is this running")
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 

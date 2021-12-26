@@ -18,14 +18,14 @@ def evaluate_model(model, dataloader, config, test_dl=True, iou_threshold=0.5):
     mean_avg_prec = MeanAveragePrecision.from_detections(
         true_batches=labels, 
         detection_batches=predictions, 
-        num_classes=config.num_classes, 
+        num_classes=config.classes, 
         iou_threshold=iou_threshold
     )
 
     confusion_matrix = ConfusionMatrix.from_detections(
         true_batches=labels, 
         detection_batches=predictions,
-        num_classes=config.num_classes
+        num_classes=config.classes
     )
 
     dl_name = "Test set"

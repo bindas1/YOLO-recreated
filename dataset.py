@@ -248,7 +248,7 @@ def prepare_data(batch_size, include_difficult, transforms, years):
         collate_fn=train_datasets[0].collate_function
     )
 
-    test = VOCDataset(2007, "test", include_difficult, transforms)
+    test = VOCDataset(2007, "test", include_difficult, transforms=False)
     test_dl = DataLoader(
         test,
         batch_size=batch_size,

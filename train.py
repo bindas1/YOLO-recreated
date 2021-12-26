@@ -4,7 +4,7 @@ import wandb
 import architecture
 import dataset
 import utils
-# import evaluation
+import evaluation
 from tqdm.notebook import tqdm
 
 
@@ -21,10 +21,10 @@ def model_pipeline(hyp, data_predefined=False, train_dl=None, test_dl=None, devi
         train(model, train_dl, test_dl, criterion, optimizer, config)
 
         # can be moved to evaluation func
-        utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
+        # utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
 
         # and test its final performance
-        # evalutaion.evaluate_model(model, train_dl, config, test_dl=False)
+        evaluation.evaluate_model(model, test_dl, config, test_dl=True)
         
     return model, optimizer
 
