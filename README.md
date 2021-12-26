@@ -21,18 +21,29 @@ conda activate yolo
 ```
 pip install -r ./requirements/requirements_linux.txt
 ```
-4. Run
+4. Create wandb account
+Go to https://wandb.ai/authorize?signup=true, sign in using github, google or create account. After the process is complete You should receive your API key (it can be also accessed in settings for account)
+5.
+Edit `train.py`
+Change line 14 entity from `bindas1` to your username:
+```
+with wandb.init(project="YOLO-recreated", entity="bindas1", config=hyp):
+```
+6. Run
 ```
 python main.py
 ```
-When prompted choose 1 (if wandb account not created)
+When prompted choose 2 (if wandb account not created)
 
 <img width="341" alt="image" src="https://user-images.githubusercontent.com/38891725/147409972-0ae85095-480d-4d42-92ff-3635280959af.png">
 
-Go to https://wandb.ai/authorize?signup=true, sign in using github, google or create account.
-
-Copy the API after the sign up process is complete and paste to the terminal. (This process only needs to be done once)
+Copy the API from the sign up process is complete and paste to the terminal. (This process only needs to be done once)
 
 After the login you should see that the data is being downloaded. If You want to make sure that the installation process is complete I suggest running the code with `config["is_one_batch"]` set to `True` in `main.py`.
+
+You can access all the metrics in your profile, each run produces new instance on wandb page.
+
+### FAQ
+If you receive the RuntimeErrror: CUDA out of memory You should change the `batch_size` in `config` in `main.py` to smaller number.
 
 
