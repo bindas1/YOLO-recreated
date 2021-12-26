@@ -19,5 +19,11 @@ conda activate yolo
 ```
 3. Add required packages
 ```
-pip install -r requirements/requirements_linux.txt
+pip install -r ./requirements/requirements_linux.txt
 ```
+4. Run
+```
+python main.py
+```
+When prompted choose 1 (if wandb account not created)
+<img width="341" alt="image" src="https://user-images.githubusercontent.com/38891725/147409972-0ae85095-480d-4d42-92ff-3635280959af.png">
