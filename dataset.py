@@ -12,6 +12,7 @@ import utils
 import os
 from albumentations.pytorch import ToTensorV2
 import albumentations as A
+import cv2
 
 
 # CONSTANTS
@@ -29,18 +30,6 @@ S = 7
 B = 2
 # no classes
 C = 20
-
-ALBUMENTATIONS_TRANSFORM = A.Compose([
-    A.Resize(448, 448), 
-    # A.RandomCrop(224, 224),
-    A.HorizontalFlip(),
-    A.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    ),
-    ToTensorV2()
-], bbox_params=A.BboxParams(format='pascal_voc'))
-
 
 
 class VOCDataset(torch.utils.data.Dataset):
@@ -155,12 +144,11 @@ class VOCDataset(torch.utils.data.Dataset):
         :param size: size of the resized image
         """
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
-        transform = A.Compose(
-            [A.Resize(height=size[1], width=size[0], always_apply=True),
+        transform = A.Compose([
+            A.Resize(height=size[1], width=size[0], always_apply=True),
             A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2()],
-            bbox_params=A.BboxParams(format='pascal_voc')
-        )
+            ToTensorV2()
+        ], bbox_params=A.BboxParams(format='pascal_voc'))
 
         transformed = transform(image=img_arr, bboxes=objects)
 
@@ -174,13 +162,18 @@ class VOCDataset(torch.utils.data.Dataset):
         :param size: size of the resized image
         """
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
-        transform = A.Compose(
-            [A.Resize(height=size[1], width=size[0], always_apply=True),
-            A.HorizontalFlip(),
+        transform = A.Compose([
+            A.Resize(height=size[1], width=size[0], always_apply=True),
+            A.HorizontalFlip(p=0.5),
+            A.Blur(blur_limit=3, p=0.5),
+            A.OneOf([
+                A.RGBShift(r_shift_limit=25, g_shift_limit=25, b_shift_limit=25, p=0.5),
+                A.ColorJitter(p=0.5),
+            ], p=1.0),
+            A.Rotate(limit=10, p=0.2, border_mode=cv2.BORDER_REFLECT_101),
             A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2()],
-            bbox_params=A.BboxParams(format='pascal_voc')
-        )
+            ToTensorV2()
+        ], bbox_params=A.BboxParams(format='pascal_voc'))
 
         transformed = transform(image=img_arr, bboxes=objects)
 
