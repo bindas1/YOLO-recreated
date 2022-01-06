@@ -1,11 +1,13 @@
 import numpy as np
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
 import torch
 import torchvision
 from torchvision.datasets import VOCDetection
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.utils.data import ConcatDataset
-import albumentations
 import utils
 import os
 from albumentations.pytorch import ToTensorV2
@@ -19,6 +21,7 @@ STD = [0.229, 0.224, 0.225]
 classes_dict = {'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5, 'sheep': 6, 'aeroplane': 7,
                 'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
                 'chair': 15, 'diningtable': 16, 'pottedplant': 17, 'sofa': 18, 'tvmonitor': 19}
+inverse_classes_dict = {v: k for k, v in classes_dict.items()}
 
 # size of grid
 S = 7
@@ -36,7 +39,7 @@ ALBUMENTATIONS_TRANSFORM = A.Compose([
         std=[0.229, 0.224, 0.225],
     ),
     ToTensorV2()
-], bbox_params=albumentations.BboxParams(format='pascal_voc'))
+], bbox_params=A.BboxParams(format='pascal_voc'))
 
 
 
@@ -152,11 +155,11 @@ class VOCDataset(torch.utils.data.Dataset):
         :param size: size of the resized image
         """
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
-        transform = albumentations.Compose(
-            [albumentations.Resize(height=size[1], width=size[0], always_apply=True),
+        transform = A.Compose(
+            [A.Resize(height=size[1], width=size[0], always_apply=True),
             A.Normalize(mean=MEAN, std=STD),
             ToTensorV2()],
-            bbox_params=albumentations.BboxParams(format='pascal_voc')
+            bbox_params=A.BboxParams(format='pascal_voc')
         )
 
         transformed = transform(image=img_arr, bboxes=objects)
@@ -171,12 +174,12 @@ class VOCDataset(torch.utils.data.Dataset):
         :param size: size of the resized image
         """
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
-        transform = albumentations.Compose(
-            [albumentations.Resize(height=size[1], width=size[0], always_apply=True),
+        transform = A.Compose(
+            [A.Resize(height=size[1], width=size[0], always_apply=True),
             A.HorizontalFlip(),
             A.Normalize(mean=MEAN, std=STD),
             ToTensorV2()],
-            bbox_params=albumentations.BboxParams(format='pascal_voc')
+            bbox_params=A.BboxParams(format='pascal_voc')
         )
 
         transformed = transform(image=img_arr, bboxes=objects)
@@ -275,7 +278,45 @@ def check_distribution(data_loader):
     """
     Given data_loader checks the distribution of all objects present in dataset
     """
-    ...
+    objects_dist, images_dist = get_distribution(data_loader)
+    # get pandas dataframe with distributions
+    objects_dist_df = pd.DataFrame(np.concatenate((objects_dist.reshape(-1,1), images_dist.reshape(-1,1)), axis=1), columns=["Ilość obiektów", "Ilość zdjęć z obiektem"]).reset_index()
+    objects_dist_df = objects_dist_df.rename({'index': 'Klasa obiektu'}, axis='columns')
+    objects_dist_df = objects_dist_df.replace({"Klasa obiektu": inverse_classes_dict})
+    plot_distributions(objects_dist_df)
+
+def get_distribution(data_loader):
+    objects_dist = np.zeros(20)
+    images_dist = np.zeros(20)
+
+    for _, labels, _ in data_loader:
+        for object_array in labels:
+            classes_array = np.zeros(20)
+            for box in object_array:
+                class_category = int(box[4])
+                objects_dist[class_category] += 1
+                
+                if classes_array[class_category] != 1:
+                    classes_array[class_category] = 1
+            images_dist += classes_array
+
+    return objects_dist, images_dist
+
+def plot_distributions(df, save=False, title="Distrybucja.png"):
+    plt.figure(figsize=(20, 10), dpi=200)
+
+    plt.subplot(1, 2, 1)
+    sns.barplot(x="Ilość obiektów", y="Klasa obiektu", color="b", data=df)
+    plt.title("Dystrybucja obiektów na wszystkich obrazkach")
+
+    plt.subplot(1, 2, 2)
+    sns.barplot(x="Ilość zdjęć z obiektem", y="Klasa obiektu", color="c", data=df)
+    plt.title("Ilość zdjęć z danymi obiektami")
+
+    if save:
+        plt.savefig(title)
+    plt.show()
+
 
 # prepare the dataset
 def save_test(year):
