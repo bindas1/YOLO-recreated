@@ -18,7 +18,7 @@ MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 classes_dict = {'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5, 'sheep': 6, 'aeroplane': 7,
                 'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
-                'chair': 15, 'dining table': 16, 'potted plant': 17, 'sofa': 18, 'tvmonitor': 19}
+                'chair': 15, 'diningtable': 16, 'pottedplant': 17, 'sofa': 18, 'tvmonitor': 19}
 
 # size of grid
 S = 7
@@ -270,6 +270,12 @@ def prepare_data(batch_size, include_difficult, transforms, years):
     utils.show_images_batch(train_dl, batch_size)
 
     return train_dl, test_dl
+
+def check_distribution(data_loader):
+    """
+    Given data_loader checks the distribution of all objects present in dataset
+    """
+    ...
 
 # prepare the dataset
 def save_test(year):
