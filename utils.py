@@ -298,6 +298,8 @@ def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_thresh
         with torch.no_grad():
             # predictions are tensor (batch_size, 7, 7, 30) when S=7
             predictions = model(inputs)
+            # for vgg model
+            predictions =  predictions.reshape(-1, 7, 7, 30)
 
         batch_size = inputs.size()[0]
 

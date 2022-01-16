@@ -72,9 +72,15 @@ def make(config, data_predefined, train_dl_predef, test_dl_predef):
 def train(model, train_dl, test_dl, criterion, optimizer, config):
     # Tell wandb to watch what the model gets up to: gradients, weights, and more!
     wandb.watch(model, criterion, log="all")
+
+    epochs = config.epochs
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[epochs*4//5, epochs*7//8], gamma=0.5
+        # optimizer, milestones=[epochs*2//3, epochs*4//5, epochs*7//8], gamma=0.5
+    )
     
     # enumerate epochs
-    for epoch in tqdm(range(config.epochs)):
+    for epoch in tqdm(range(epochs)):
         running_loss = 0.0
         running_val_loss = 0.0
         idx = 1
@@ -110,10 +116,13 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         wandb.log({
             "epoch": epoch, 
             "avg_batch_loss": running_loss,
-            "test_loss": running_val_loss
+            "test_loss": running_val_loss,
+            "learning_rate": optimizer.param_groups[0]["lr"]
         }, step=epoch)
 #         wandb.log({"epoch": epoch, "loss": loss}, step=example_ct)
         print("Average epoch loss {}".format(running_loss))
+        scheduler.step()
+        # utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
 
 
 def train_batch(images, labels, model, optimizer, criterion):

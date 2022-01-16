@@ -164,16 +164,22 @@ class VOCDataset(torch.utils.data.Dataset):
         # create resize transform pipeline that resizes to SIZE, normalizes and converts to tensor
         transform = A.Compose([
             A.Resize(height=size[1], width=size[0], always_apply=True),
+            A.Compose([
+                    A.RandomCrop(width=380, height=380, p=1.0),
+                    A.Resize(height=size[1], width=size[0], always_apply=True)
+            ], p=0.05),
             A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.01),
             A.Blur(blur_limit=3, p=0.5),
             A.OneOf([
-                A.RGBShift(r_shift_limit=25, g_shift_limit=25, b_shift_limit=25, p=0.5),
-                A.ColorJitter(p=0.5),
+                A.RGBShift(r_shift_limit=25, g_shift_limit=25, b_shift_limit=25, p=0.6),
+                A.ColorJitter(p=0.4),
             ], p=1.0),
-            A.Rotate(limit=10, p=0.2, border_mode=cv2.BORDER_REFLECT_101),
+            A.Rotate(limit=12, p=0.4, border_mode=cv2.BORDER_REFLECT_101),
+            A.augmentations.transforms.Cutout(num_holes=4, max_h_size=3, max_w_size=3, p=0.1),
             A.Normalize(mean=MEAN, std=STD),
             ToTensorV2()
-        ], bbox_params=A.BboxParams(format='pascal_voc'))
+        ], bbox_params=A.BboxParams(format='pascal_voc', min_visibility=0.5))
 
         transformed = transform(image=img_arr, bboxes=objects)
 
@@ -229,7 +235,7 @@ class DeNormalize(object):
 
 
 # prepare the dataset
-def prepare_data(batch_size, include_difficult, transforms, years):
+def prepare_data(batch_size, include_difficult, transforms, years, num_workers=2):
     # load dataset
 
     train_datasets = [
@@ -240,16 +246,28 @@ def prepare_data(batch_size, include_difficult, transforms, years):
         train,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=num_workers,
         collate_fn=train_datasets[0].collate_function
     )
+
+    # val_datasets = [
+    #     VOCDataset(year, "val", include_difficult, transforms=False) for year in years
+    # ]
+    # val = ConcatDataset(val_datasets)
+    # val_dl = DataLoader(
+    #     val,
+    #     batch_size=batch_size,
+    #     shuffle=False,
+    #     num_workers=num_workers,
+    #     collate_fn=val_datasets[0].collate_function
+    # )
 
     test = VOCDataset(2007, "test", include_difficult, transforms=False)
     test_dl = DataLoader(
         test,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=num_workers,
         collate_fn=test.collate_function
     )
 
@@ -260,23 +278,35 @@ def prepare_data(batch_size, include_difficult, transforms, years):
     print(f"Labels matrix batch shape for training: {train_label_matrix.size()}")
 
     print(f"Size of training set: {len(train_dl)*batch_size}")
-    print(f"Size of test set: {len(test_dl)*batch_size}")
+    print(f"Size of validation set: {len(test_dl)*batch_size}")
 
     print("Sample batch for training dataloader is presented below:")
     utils.show_images_batch(train_dl, batch_size)
 
     return train_dl, test_dl
 
-def check_distribution(data_loader):
+def prepare_test_data(batch_size, include_difficult, num_workers=2):
+    test = VOCDataset(2007, "test", include_difficult, transforms=False)
+    test_dl = DataLoader(
+        test,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=test.collate_function
+    )
+
+    return test_dl
+
+def check_distribution(data_loader, save=False, title="Distrybucja.png"):
     """
     Given data_loader checks the distribution of all objects present in dataset
     """
     objects_dist, images_dist = get_distribution(data_loader)
     # get pandas dataframe with distributions
-    objects_dist_df = pd.DataFrame(np.concatenate((objects_dist.reshape(-1,1), images_dist.reshape(-1,1)), axis=1), columns=["Ilość obiektów", "Ilość zdjęć z obiektem"]).reset_index()
+    objects_dist_df = pd.DataFrame(np.concatenate((objects_dist.reshape(-1,1), images_dist.reshape(-1,1)), axis=1), columns=["Liczba obiektów", "Liczba zdjęć z obiektem"]).reset_index()
     objects_dist_df = objects_dist_df.rename({'index': 'Klasa obiektu'}, axis='columns')
     objects_dist_df = objects_dist_df.replace({"Klasa obiektu": inverse_classes_dict})
-    plot_distributions(objects_dist_df)
+    plot_distributions(objects_dist_df, save, title)
 
 def get_distribution(data_loader):
     objects_dist = np.zeros(20)
@@ -295,16 +325,20 @@ def get_distribution(data_loader):
 
     return objects_dist, images_dist
 
-def plot_distributions(df, save=False, title="Distrybucja.png"):
+def plot_distributions(df, save, title):
+    plt.rcParams.update({'font.size': 14})
     plt.figure(figsize=(20, 10), dpi=200)
 
     plt.subplot(1, 2, 1)
-    sns.barplot(x="Ilość obiektów", y="Klasa obiektu", color="b", data=df)
+    sns.barplot(x="Liczba obiektów", y="Klasa obiektu", color='b', data=objects_dist_df, alpha=0.4)
     plt.title("Dystrybucja obiektów na wszystkich obrazkach")
+    plt.grid(axis='x')
 
     plt.subplot(1, 2, 2)
-    sns.barplot(x="Ilość zdjęć z obiektem", y="Klasa obiektu", color="c", data=df)
-    plt.title("Ilość zdjęć z danymi obiektami")
+    ax = sns.barplot(x="Liczba zdjęć z obiektem", y="Klasa obiektu", color='c', data=objects_dist_df, alpha=0.4)
+    ax.set(ylabel=None)
+    plt.title("Liczba zdjęć z danymi obiektami")
+    plt.grid(axis='x')
 
     if save:
         plt.savefig(title)

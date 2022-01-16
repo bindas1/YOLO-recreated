@@ -36,6 +36,7 @@ def evaluate_model(model, dataloader, config, test_dl=True, iou_threshold=0.5):
     plt.title("{} confusion matrix".format(dl_name))
     plt.show()
 
+    # comment this if running without wandb
     wandb.log({"{} MAP".format(dl_name): mean_avg_prec.value})
     print("{} MAP for this model is equal to: {}".format(dl_name, mean_avg_prec.value))
 
