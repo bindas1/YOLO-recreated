@@ -4,10 +4,11 @@ import wandb
 import architecture
 import dataset
 import utils
-# import evaluation
-from tqdm.notebook import tqdm
+import evaluation
+from tqdm import tqdm
 from torchvision.models.vgg import *
 import torch.nn as nn
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -101,6 +102,8 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
                     print(loss.item(), epoch)
             running_loss = running_loss / len(train_dl)
 
+            # UNCOMMENT TO WATCH VAL LOSS
+
             # for i, (inputs, _, targets) in enumerate(test_dl):
             #     val_loss = test_batch(inputs, targets, model, criterion)
             #     if i%100==0:
@@ -124,6 +127,7 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         wandb.log({
             "epoch": epoch, 
             "avg_batch_loss": running_loss,
+            # UNCOMMENT TO WATCH VAL LOSS
             # "test_loss": running_val_loss,
             "learning_rate": optimizer.param_groups[0]["lr"]
         }, step=epoch)
@@ -131,7 +135,7 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         print("Average epoch loss {}".format(running_loss))
 
         scheduler.step()
-        utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
+        # utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
 
 
 def train_batch(images, labels, model, optimizer, criterion):
