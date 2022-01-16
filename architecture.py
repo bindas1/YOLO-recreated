@@ -18,7 +18,7 @@ class darknet(nn.Module):
         
         self.fc_layers = nn.Sequential(
             nn.Linear(1024 * S * S, 4096),
-            nn.Dropout(0.5),
+            nn.Dropout(0.6),
             # nn.BatchNorm1d(4096),
             nn.LeakyReLU(0.1),
             nn.Linear(4096, S * S * (B * 5 + C)),
