@@ -6,9 +6,61 @@ import torch
 import loss
 import architecture
 import numpy as np
+import time
+from tqdm.notebook import tqdm
 
 
 device = "cpu"
+
+class SpeedTesting():
+    def __init__(self, model, dataset, device=None, max_iter=None):
+        self.model = model
+        self.dataset = dataset
+        self.max_iter = -1 if max_iter is None else max_iter
+        if device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
+
+    def speed_testing(self):
+        # cuDnn configurations
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = True
+
+        model = self.model.to(self.device)
+
+        model.eval()
+        time_list = []
+
+        for i in tqdm(range(len(self.dataset))):
+            inputs, _, _ = self.dataset[i]
+            inputs = inputs.to(self.device)
+            inputs = inputs.reshape(-1, 3, 448, 448)
+
+            torch.cuda.synchronize()
+            tic = time.time()
+
+            with torch.no_grad():
+                # predictions are tensor (batch_size, 7, 7, 30) when S=7
+                predictions = model(inputs)
+                predictions = predictions.reshape(-1, 7, 7, 30)
+
+            pred_bbox = utils.tensor_to_bbox_list(predictions, is_target=False, device=self.device)
+            _ = utils.non_max_suppression(
+                pred_bbox[0], 0.5, 0.2
+            )
+
+            time_list.append(time.time()-tic)
+
+            if i == (self.max_iter - 1):
+                break
+
+        time_list = time_list[1:]
+        print("     + Total number of iterations: {}s".format(len(time_list)))
+        print("     + Total time cost: {}s".format(sum(time_list)))
+        print("     + Average time cost: {}s".format(sum(time_list)/(len(time_list))))
+        print("     + Frame Per Second: {:.2f}".format(len(time_list)/(sum(time_list))))    
+
 
 class TestVOCDataset(unittest.TestCase):
     def test_parse(self):
@@ -27,19 +79,6 @@ class TestVOCDataset(unittest.TestCase):
         print(test._parse_objects(objects))
 
         self.assertEqual(test._parse_objects(objects), refer_value, "Should properly parse objects")
-
-    def test_create_label_tensor(self):
-        # TODO!!!
-        pass
-
-    # def test_resize_imaeg(self):
-    #     image = np.asarray(Image.open("./image/test_image.jpg"))
-
-    #     test = VOCDataset(2007, "test")
-
-    #     self.assertEqual(
-
-    #     )
 
 class TestUtils(unittest.TestCase):
     def test_iou_for_identical_boxes(self):
@@ -96,14 +135,6 @@ class TestArchitecture(unittest.TestCase):
         input = torch.rand(4, 3, 448, 448)
 
         self.assertEqual(yolo_net(input).size(), torch.Size([4, 7, 7, 30]))
-
-# class TestLoss(unittest.TestCase):
-#     def test_xywh_loss_shape(self):
-#         pred_box = torch.rand(16, 7, 7, 4)
-#         target_box = torch.rand(16, 7, 7, 4)
-#         exists_filter = torch.rand(16, 7, 7, 1)
-        
-
 
 
 if __name__ == '__main__':
