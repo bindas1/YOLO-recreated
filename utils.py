@@ -24,11 +24,12 @@ inverse_classes_dict = {v: k for k, v in classes_dict.items()}
 
 # === PLOTTING ===
 
-def show_image_with_classes_(image, labels):
+def show_image_with_classes_(image, labels, save=False, filename="sample.png"):
     un_norm = dataset.DeNormalize(dataset.MEAN, dataset.STD)
     # denormalize the image
     npimg = un_norm(image.clone()).numpy()
     npimg = npimg.transpose((1, 2, 0)).copy()
+    npimg = (npimg * 255).astype(np.uint8)
 
     for bbox in labels:
         x = int(bbox[0])
@@ -41,6 +42,8 @@ def show_image_with_classes_(image, labels):
         cv2.putText(npimg, class_name, (x, y), FONT, font_size, red, thickness + 2)
 
     # Display the image
+    if save:
+        plt.imsave(filename, npimg)
     plt.imshow(npimg)
 
 
@@ -86,7 +89,6 @@ def xyxy_to_xywh(x1, y1, x2, y2, size):
     h = (y2 - y1) / size[1]
     return x, y, w, h
 
-
 def xywh_to_xyxy_pixel(x, y, w, h, size):
     x1 = (x - w / 2) * size[0]
     y1 = (y - h / 2) * size[1]
@@ -124,7 +126,7 @@ def xywh_to_xyxy_tensor(x, y, w, h, S=S, device=device):
     x_image, y_image, w_image, h_image = scale_to_image_xywh(x, y, w, h, S=S, device=device)
     return xywh_to_xyxy_image(x_image, y_image, w_image, h_image, (S, S))
 
-def tensor_to_bbox_list(tensor, is_target, S=S):
+def tensor_to_bbox_list(tensor, is_target, S=S, device=device):
     """Input is an output/target tensor of size (batch_size, S,S,30)
     is_target tells us if this is of shape (batch_size, S,S,25) if true
     """
@@ -153,7 +155,7 @@ def tensor_to_bbox_list(tensor, is_target, S=S):
 
     # convert from local cell coords to global image coords
     xmin, ymin, xmax, ymax = xywh_to_xyxy_tensor(
-      bboxes[..., 0], bboxes[..., 1], bboxes[..., 2], bboxes[..., 3]
+      bboxes[..., 0], bboxes[..., 1], bboxes[..., 2], bboxes[..., 3], device=device
     )
 
     coords = torch.stack([xmin, ymin, xmax, ymax], -1)
@@ -298,8 +300,7 @@ def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_thresh
         with torch.no_grad():
             # predictions are tensor (batch_size, 7, 7, 30) when S=7
             predictions = model(inputs)
-            # for vgg model
-            predictions =  predictions.reshape(-1, 7, 7, 30)
+            predictions = predictions.reshape(-1, 7, 7, 30)
 
         batch_size = inputs.size()[0]
 
@@ -337,7 +338,7 @@ def pred_and_target_boxes_map(data_loader, model, iou_threshold=0.5, conf_thresh
 
     return predicted_boxes, labels
 
-def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.2):
+def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=0.5, conf_threshold=0.2, nms=True, conf=True):
     """Function used to obtain prediction and target boxes for evaluation and depicting results
     Results:
     - target: array of numpy arras with bboxes [photo_id, class, xmin, ymin, xmax,  ymax]
@@ -364,6 +365,7 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
             with torch.no_grad():
                 # predictions are tensor (batch_size, 7, 7, 30) when S=7
                 predictions = model(inputs)
+                predictions = predictions.reshape(-1, 7, 7, 30)
 
             batch_size = inputs.size()[0]
 
@@ -373,11 +375,15 @@ def pred_and_target_boxes(data_loader, model, single_batch=False, iou_threshold=
             to_remove = []
 
             for i in range(batch_size):
-                nms_pred_boxes = non_max_suppression(
-                    pred_bbox[i], iou_threshold, conf_threshold
-                )
+                pred_boxes = pred_bbox[i]
+                if conf:
+                    pred_boxes = [bbox for bbox in pred_boxes if bbox[1] > 0.2]
+                if nms:
+                    pred_boxes = non_max_suppression(
+                        pred_boxes, iou_threshold, conf_threshold
+                    )
 
-                for box in nms_pred_boxes:
+                for box in pred_boxes:
                     # add the pic index to all elements and append to predicted_boxes
                     predicted_boxes.append([pic_index] + box)
 
