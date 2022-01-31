@@ -4,14 +4,14 @@ import wandb
 import architecture
 import dataset
 import utils
-import evaluation
-from tqdm import tqdm
+# import evaluation
+from tqdm.notebook import tqdm
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def model_pipeline(hyp, data_predefined=False, train_dl=None, test_dl=None, device=device):
-    with wandb.init(project="YOLO-recreated", entity="bindas_try", config=hyp):
+    with wandb.init(project="YOLO-recreated", entity="bindas1", config=hyp):
         config = wandb.config
         
         # make the model, data, and optimization problem
@@ -21,10 +21,10 @@ def model_pipeline(hyp, data_predefined=False, train_dl=None, test_dl=None, devi
         train(model, train_dl, test_dl, criterion, optimizer, config)
 
         # can be moved to evaluation func
-        # utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
+        # utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
 
         # and test its final performance
-        evaluation.evaluate_model(model, test_dl, config, test_dl=True)
+        # evaluation.evaluate_model(model, test_dl, config, test_dl=True)
         
     return model, optimizer
 
@@ -78,6 +78,10 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         optimizer, milestones=[epochs*4//5, epochs*7//8], gamma=0.5
         # optimizer, milestones=[epochs*2//3, epochs*4//5, epochs*7//8], gamma=0.5
     )
+
+    # for early stopping
+    best_val_loss = None
+    iter_worse_val = 0
     
     # enumerate epochs
     for epoch in tqdm(range(epochs)):
@@ -119,10 +123,22 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
             "test_loss": running_val_loss,
             "learning_rate": optimizer.param_groups[0]["lr"]
         }, step=epoch)
-#         wandb.log({"epoch": epoch, "loss": loss}, step=example_ct)
         print("Average epoch loss {}".format(running_loss))
+
         scheduler.step()
-        # utils.save_checkpoint(model, optimizer, "../input/utility-for-yolo/test_check.pth.tar")
+
+        if best_val_loss is None:
+            best_val_loss = running_val_loss
+        else:
+            if running_val_loss < best_val_loss:
+                iter_worse_val = 0
+                best_val_loss = running_val_loss
+                utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
+            else:
+                iter_worse_val += 1
+                if iter_worse_val > 4:
+                    print("I WOULD BREAK AT EPOCH {}".format(epoch))
+                    # break
 
 
 def train_batch(images, labels, model, optimizer, criterion):

@@ -4,11 +4,10 @@ import wandb
 import architecture
 import dataset
 import utils
-import evaluation
-from tqdm import tqdm
+# import evaluation
+from tqdm.notebook import tqdm
 from torchvision.models.vgg import *
 import torch.nn as nn
-
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -87,6 +86,10 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         optimizer, milestones=[epochs*4//5, epochs*7//8], gamma=0.5
         # optimizer, milestones=[epochs*2//3, epochs*4//5, epochs*7//8], gamma=0.5
     )
+
+    # for early stopping
+    best_val_loss = None
+    iter_worse_val = 0
     
     # enumerate epochs
     for epoch in tqdm(range(epochs)):
@@ -102,19 +105,17 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
                     print(loss.item(), epoch)
             running_loss = running_loss / len(train_dl)
 
-            # UNCOMMENT TO WATCH VAL LOSS
-
-            # for i, (inputs, _, targets) in enumerate(test_dl):
-            #     val_loss = test_batch(inputs, targets, model, criterion)
-            #     if i%100==0:
-            #         print("VAL LOSS {}, {}".format(val_loss, epoch))
-            #     running_val_loss += val_loss * batch_size
-            #     # if idx % 25 == 0:
-            #     #     wandb.log({
-            #     #         "test_loss_batches": running_val_loss / idx
-            #     #     }, step=idx//25)
-            #     # idx += 1
-            # running_val_loss = running_val_loss / len(test_dl)
+            for i, (inputs, _, targets) in enumerate(test_dl):
+                val_loss = test_batch(inputs, targets, model, criterion)
+                if i%100==0:
+                    print("VAL LOSS {}, {}".format(val_loss, epoch))
+                running_val_loss += val_loss * batch_size
+                # if idx % 25 == 0:
+                #     wandb.log({
+                #         "test_loss_batches": running_val_loss / idx
+                #     }, step=idx//25)
+                # idx += 1
+            running_val_loss = running_val_loss / len(test_dl)
         else:
             with torch.autograd.detect_anomaly():
                 # for one batch only
@@ -127,15 +128,26 @@ def train(model, train_dl, test_dl, criterion, optimizer, config):
         wandb.log({
             "epoch": epoch, 
             "avg_batch_loss": running_loss,
-            # UNCOMMENT TO WATCH VAL LOSS
-            # "test_loss": running_val_loss,
+            "test_loss": running_val_loss,
             "learning_rate": optimizer.param_groups[0]["lr"]
         }, step=epoch)
 #         wandb.log({"epoch": epoch, "loss": loss}, step=example_ct)
         print("Average epoch loss {}".format(running_loss))
 
         scheduler.step()
-        # utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
+
+        if best_val_loss is None:
+            best_val_loss = running_val_loss
+        else:
+            if running_val_loss < best_val_loss:
+                iter_worse_val = 0
+                best_val_loss = running_val_loss
+                utils.save_checkpoint(model, optimizer, "/kaggle/working/yolo_test.pth.tar")
+            else:
+                iter_worse_val += 1
+                if iter_worse_val > 4:
+                    print("I WOULD BREAK AT EPOCH {}".format(epoch))
+                    # break
 
 
 def train_batch(images, labels, model, optimizer, criterion):
