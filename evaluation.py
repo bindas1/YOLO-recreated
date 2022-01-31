@@ -12,20 +12,20 @@ CLASSES = list({'person': 0, 'bird': 1, 'cat': 2, 'cow': 3, 'dog': 4, 'horse': 5
                 'bicycle': 8, 'boat': 9, 'bus': 10, 'car': 11, 'motorbike': 12, 'train': 13, 'bottle': 14,
                 'chair': 15, 'dining table': 16, 'potted plant': 17, 'sofa': 18, 'tvmonitor': 19}.keys())
 
-def evaluate_model(model, dataloader, config, test_dl=True, iou_threshold=0.5):
-    predictions, labels = utils.pred_and_target_boxes_map(dataloader, model, single_batch=config.is_one_batch)
+def evaluate_model(model, dataloader, is_one_batch=False, test_dl=True, iou_threshold=0.5):
+    predictions, labels = utils.pred_and_target_boxes_map(dataloader, model, single_batch=is_one_batch)
 
     mean_avg_prec = MeanAveragePrecision.from_detections(
         true_batches=labels, 
         detection_batches=predictions, 
-        num_classes=config.classes, 
+        num_classes=20, 
         iou_threshold=iou_threshold
     )
 
     confusion_matrix = ConfusionMatrix.from_detections(
         true_batches=labels, 
         detection_batches=predictions,
-        num_classes=config.classes
+        num_classes=20
     )
 
     dl_name = "Test set"
@@ -36,8 +36,10 @@ def evaluate_model(model, dataloader, config, test_dl=True, iou_threshold=0.5):
     plt.title("{} confusion matrix".format(dl_name))
     plt.show()
 
-    # comment this if running without wandb
-    wandb.log({"{} MAP".format(dl_name): mean_avg_prec.value})
+    mean_avg_prec.plot("try.png", class_names=CLASSES)
+    plt.show()
+
+    # wandb.log({"{} MAP".format(dl_name): mean_avg_prec.value})
     print("{} MAP for this model is equal to: {}".format(dl_name, mean_avg_prec.value))
 
 
@@ -48,18 +50,21 @@ def evaluate_predictions(pred_file, labels_file, is_one_batch=False):
     mean_avg_prec = MeanAveragePrecision.from_detections(
         true_batches=labels, 
         detection_batches=predictions, 
-        num_classes=config.classes, 
+        num_classes=20, 
         iou_threshold=iou_threshold
     )
 
     confusion_matrix = ConfusionMatrix.from_detections(
         true_batches=labels, 
         detection_batches=predictions,
-        num_classes=config.classes
+        num_classes=20
     )
 
     confusion_matrix.plot(".", class_names=CLASSES, normalize=True)
     plt.title("Confusion matrix")
+    plt.show()
+
+    mean_avg_prec.plot("try.png", class_names=CLASSES)
     plt.show()
 
 
