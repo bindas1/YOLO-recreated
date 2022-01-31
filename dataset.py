@@ -13,6 +13,7 @@ import os
 from albumentations.pytorch import ToTensorV2
 import albumentations as A
 import cv2
+from tqdm import tqdm
 
 
 # CONSTANTS
@@ -238,9 +239,18 @@ class DeNormalize(object):
 def prepare_data(batch_size, include_difficult, transforms, years, num_workers=2):
     # load dataset
 
-    train_datasets = [
-        VOCDataset(year, "trainval", include_difficult, transforms) for year in years
-    ]
+    train_datasets = []
+
+    for year in years:
+        if year == 2007:
+            train_datasets.append(VOCDataset(year, "train", include_difficult, transforms))
+        else:
+            train_datasets.append(VOCDataset(year, "trainval", include_difficult, transforms))
+
+    # train_datasets = [
+    #     VOCDataset(year, "trainval", include_difficult, transforms) for year in years
+    # ]
+    
     train = ConcatDataset(train_datasets)
     train_dl = DataLoader(
         train,
@@ -262,7 +272,7 @@ def prepare_data(batch_size, include_difficult, transforms, years, num_workers=2
     #     collate_fn=val_datasets[0].collate_function
     # )
 
-    test = VOCDataset(2007, "test", include_difficult, transforms=False)
+    test = VOCDataset(2007, "val", include_difficult, transforms=False)
     test_dl = DataLoader(
         test,
         batch_size=batch_size,
@@ -285,7 +295,7 @@ def prepare_data(batch_size, include_difficult, transforms, years, num_workers=2
 
     return train_dl, test_dl
 
-def prepare_test_data(batch_size, include_difficult, num_workers=2):
+def prepare_test_data(batch_size, include_difficult=False, num_workers=2):
     test = VOCDataset(2007, "test", include_difficult, transforms=False)
     test_dl = DataLoader(
         test,
@@ -357,10 +367,8 @@ def save_test(year):
         download=True
     )
 
-    # test = VOCDataset(2007, "test")
-
     cwd = os.getcwd()
-    path = os.path.join(cwd, "pjreddie_YOLOv1/darknet/test")
+    path = os.path.join(cwd, "data/test")
 
     for image, annotations in test_dataset:
         filename = annotations["annotation"]["filename"]
@@ -376,13 +384,38 @@ def save_test(year):
                 x_max = class_object["bndbox"]["xmax"]
                 y_max = class_object["bndbox"]["ymax"]  
 
-                f.write(class_object["name"] + " " + x_min + " " + y_min + " " + x_max + " " +y_max)
+                f.write(class_object["name"] + " " + x_min + " " + y_min + " " + x_max + " " +y_max + "\n")
 
         with open(os.path.join(path, "test.txt"), "a") as f:
-            f.write(os.path.join(cwd, "pjreddie_YOLOv1/darknet/test/") + filename + "\n")
+            f.write(os.path.join(cwd, "data/test/") + filename + "\n")
+
+
+# prepare the dataset
+def save_test_my_dataset(folder_path, predictions):
+    path = folder_path
+
+
+    for idx in tqdm(range(len(predictions))):
+        annotations_path = os.path.join(path, str(idx) + ".txt")
+
+        # creates empty file
+        with open(annotations_path, 'w') as fp:
+            pass
+        
+        if predictions[idx].shape[0] == 0:
+            # create empty file
+            continue
+        else:
+            for x, y, x2, y2, class_no, conf in predictions[idx]:
+                class_no = inverse_classes_dict[int(class_no)]
+                x, y = str(int(x)), str(int(y))
+                x2, y2 = str(int(x2)), str(int(y2))
+
+                with open(annotations_path, 'a') as f:
+                    f.write(class_no + " " + str(conf)+ " " + x + " " + y + " " + x2 + " " + y2 + "\n")
 
 
 if __name__ == '__main__':
-    # save_test(2007)
-    ...
+    save_test_my_dataset(2007)
+    # ...
 
